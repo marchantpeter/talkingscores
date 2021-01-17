@@ -45,15 +45,14 @@ class AnalyseIndex:
     def __init__(self, ei):
         #print("hello - I'm an AnalyseIndex...")
         self.event_index = ei
-
         self.event_type = '' # n c r
 
-        self.chord_interal_index = [-1, -1] 
+        self.chord_interval_index = [-1, -1] 
         self.chord_pitches_index = [-1, -1]
-        self.chord_name_index = [-1, -1]
-        self.chord_index = [-1, -1]
-
-        self.pitch_index = [-1, -1]
+        self.chord_name_index = ['', -1]
+        
+        self.pitch_number_index = [-1, -1]
+        self.pitch_name_index = ['', -1]
         self.interval_index = [-1, -1]
 
         self.rhythm_note_index = [-1, -1]
@@ -64,10 +63,11 @@ class AnalysePart:
     
     def __init__(self):
         print("hello - I'm an AnalysePart...")
-        self.pitches = [0] * 128
-        
         self.analyse_indexes = []
+        
+        self.pitches = [0] * 128
         self.pitch_list = []
+        self.pitch_name_dictionary = {}
         self.interval_dictionary = {}
         self.rhythm_note_dictionary = {}
         self.rhythm_rest_dictionary = {}
@@ -79,6 +79,16 @@ class AnalysePart:
         self.chord_intervals_dictionary = {}
         self.chord_common_name_dictionary = {}
 
+        self.count_pitches = []
+        self.count_pitch_names = []
+        self.count_intervals = []
+        self.count_chord_pitches = []
+        self.count_chord_intervals = []
+        self.count_chord_common_names = []
+        self.count_rhythm_note = []
+        self.count_rhythm_rest = []
+        self.count_rhythm_chord = []
+
         self.note_duration = 0
         self.note_count = 0
         self.rest_duration = 0
@@ -87,6 +97,7 @@ class AnalysePart:
         self.chord_count = 0
 
         self.part = None
+
 
     def find_chord(self, chord):
         chord_index=0
@@ -126,37 +137,47 @@ class AnalysePart:
         for n in self.part.flat.notesAndRests:
             ai = AnalyseIndex(event_index)
             if n.isRest:
+                ai.event_type = 'r'
+                
                 d = n.duration.quarterLength
                 if self.rhythm_rest_dictionary.get(d) == None:
                     self.rhythm_rest_dictionary[d] = [event_index]
                 else:
                     self.rhythm_rest_dictionary[d].append(event_index)
+                ai.rhythm_rest_index = [self.rhythm_rest_dictionary.get(d), len(self.rhythm_rest_dictionary.get(d))-1]
+                
                 last_note_pitch = -1
                 self.rest_duration += d
                 self.rest_count += 1
             elif n.isChord:
+                ai.event_type = 'c'
+                
                 d = n.duration.quarterLength
                 if self.rhythm_chord_dictionary.get(d) == None:
                     self.rhythm_chord_dictionary[d] = [event_index]
                 else:
                     self.rhythm_chord_dictionary[d].append(event_index)
-
+                ai.rhythm_chord_dictionary = [self.rhythm_chord_dictionary.get(d), len(self.rhythm_chord_dictionary.get(d))-1]
+                
                 index = self.find_chord(n)
                 if index == -1:
                     self.chord_pitches_list.append(sorted(p.midi for p in n.pitches))
-                    self.chord_pitches_dictionary[len(self.chord_pitches_list)-1] = [event_index]
-                    #print("added chord at index " + str(self.chord_count))
+                    index = len(self.chord_pitches_list)-1
+                    self.chord_pitches_dictionary[index] = [event_index]
                 else:
                     self.chord_pitches_dictionary[index].append(event_index)
-
+                ai.chord_pitches_index = [index, len(self.chord_pitches_dictionary.get(index))-1]
+                
                 chord_intervals = self.make_chord_intervals(n)
                 index = self.find_chord_intervals(chord_intervals)
                 if index == -1:
                     self.chord_intervals_list.append(chord_intervals)
-                    self.chord_intervals_dictionary[len(self.chord_intervals_list)-1] = [event_index]
+                    index = len(self.chord_intervals_list)-1
+                    self.chord_intervals_dictionary[index] = [event_index]
                 else:
                     self.chord_intervals_dictionary[index].append(event_index)
-
+                ai.chord_interval_index = [index, len(self.chord_intervals_dictionary.get(index))-1]
+                
                 common_name = n.commonName
                 #music21 describes eg A, D, E as a quatral trichord - ie E, A, D are perfect fourths...
                 if chord_intervals == [0, 5, 7]:
@@ -167,25 +188,38 @@ class AnalysePart:
                     self.chord_common_name_dictionary[common_name] = [event_index]
                 else:
                     self.chord_common_name_dictionary[common_name].append(event_index)
-
-
+                ai.chord_name_index = [common_name, len(self.chord_common_name_dictionary.get(common_name))-1]
+                
                 self.chord_duration += d
                 self.chord_count += 1
             elif not n.isChord:
+                ai.event_type = 'n'
+                
                 self.pitches[n.pitch.midi] += 1
                 self.pitch_list[n.pitch.midi].append(event_index)
+                ai.pitch_number_index = [n.pitch.midi, len(self.pitch_list[n.pitch.midi])-1]
+                
+                if self.pitch_name_dictionary.get(n.pitch.name) == None:
+                    self.pitch_name_dictionary[n.pitch.name] = [event_index]
+                else:
+                    self.pitch_name_dictionary[n.pitch.name].append(event_index)
+                ai.pitch_name_index = [n.pitch.name, len(self.pitch_name_dictionary[n.pitch.name])-1]
+                
                 if (last_note_pitch>-1):
                     interval = n.pitch.midi-last_note_pitch
                     if self.interval_dictionary.get(interval) == None:
                         self.interval_dictionary[interval] = [event_index]
                     else:
                         self.interval_dictionary[interval].append(event_index)
+                    ai.interval_index = [interval, len(self.interval_dictionary.get(interval))-1]
+                
                 d = n.duration.quarterLength
                 if self.rhythm_note_dictionary.get(d) == None:
                     self.rhythm_note_dictionary[d] = [event_index]
                 else:
                     self.rhythm_note_dictionary[d].append(event_index)
-                #print(n.duration.fullName)
+                ai.rhythm_note_dictionary = [self.rhythm_note_dictionary.get(d), len(self.rhythm_note_dictionary.get(d))-1]
+                
                 last_note_pitch = n.pitch.midi
                 self.note_duration += d
                 self.note_count += 1
@@ -214,3 +248,50 @@ class AnalysePart:
         #print(self.chord_intervals_dictionary)
 
         print (self.chord_common_name_dictionary)
+ 
+        #make lists of index and totals then sort by totals for eg most common pitch / rhythm etc
+        #lists
+        self.count_pitches = self.count_list(self.pitch_list)
+        print(self.count_pitches)
+        #dictionaries
+        self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
+        self.count_intervals = self.count_dictionary(self.interval_dictionary)
+        self.count_chord_common_names = self.count_dictionary(self.chord_common_name_dictionary)
+        self.count_rhythm_note = self.count_dictionary(self.rhythm_note_dictionary)
+        self.count_rhythm_rest = self.count_dictionary(self.rhythm_rest_dictionary)
+        self.count_rhythm_chord = self.count_dictionary(self.rhythm_chord_dictionary)
+        #dictionaries with list indexes as keys
+        self.count_chord_pitches = self.count_dictionary(self.chord_pitches_dictionary)
+        self.count_chord_intervals = self.count_dictionary(self.chord_intervals_dictionary)
+        
+        #self.count_pitches = self.count_list(self.pitch_list)
+
+
+    def sort_count_list(self, e):
+        return e[1]
+
+    def count_dictionary(self, d):
+        sorted_list = []
+        for k, v in d.items():
+            sorted_list.append([k, len(v)])
+        sorted_list.sort(reverse=True, key=self.sort_count_list)
+        return sorted_list
+
+    def count_list(self, l):
+        sorted_list = []
+        i = 0
+        for item in l:
+            if len(item)>0:
+                sorted_list.append([i, len(item)])
+            i += 1
+        sorted_list.sort(reverse=True, key=self.sort_count_list)
+        return sorted_list
+
+
+    #get keys in order of items in list - for w in sorted(self.chord_common_name_dictionary, key=self.sort_count_dictionary, reverse=True):
+    def sort_count_dictionary(self, e):
+        return len(e)
+
+
+
+
