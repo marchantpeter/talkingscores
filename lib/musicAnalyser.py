@@ -8,13 +8,36 @@ from music21 import *
 
 logger = logging.getLogger("TSScore")
 
+class AnalyseIndex:
+
+    def __init__(self, ei):
+        self.event_index = ei
+        self.event_type = '' # n c r
+
+        self.chord_interval_index = [-1, -1] 
+        self.chord_pitches_index = [-1, -1]
+        self.chord_name_index = ['', -1]
+        
+        self.pitch_number_index = [-1, -1]
+        self.pitch_name_index = ['', -1]
+        self.interval_index = [-1, -1]
+        #possibly only needs one rhythm index
+        self.rhythm_note_index = [-1, -1]
+        self.rhythm_chord_index = [-1, -1]
+        self.rhythm_rest_index = [-1, -1]
+
+class AnalyseSection:
+    def __init__(self):
+        self.analyse_indexes = [] # all the notes etc in the section
+        self.section_start_event_indexes = [] # the event indexes where this section occurs
+        
+
 class MusicAnalyser:
     score = None
     analyse_parts = []
 
     def __init__(self):
         print("hello - I'm a MusicAnalyser...")
-        
 
     def setScore(self, sc):
         if not self.score == None: # it still gets called twice - I don't know why!
@@ -39,31 +62,45 @@ class MusicAnalyser:
     def count_pitches(self):
         print("counting pitches")
 
-
-class AnalyseIndex:
-
-    def __init__(self, ei):
-        #print("hello - I'm an AnalyseIndex...")
-        self.event_index = ei
-        self.event_type = '' # n c r
-
-        self.chord_interval_index = [-1, -1] 
-        self.chord_pitches_index = [-1, -1]
-        self.chord_name_index = ['', -1]
-        
-        self.pitch_number_index = [-1, -1]
-        self.pitch_name_index = ['', -1]
-        self.interval_index = [-1, -1]
-
-        self.rhythm_note_index = [-1, -1]
-        self.rhythm_chord_index = [-1, -1]
-        self.rhythm_rest_index = [-1, -1]
-
 class AnalysePart:
     
+    def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection):
+        to_return = False
+        if (len(s1.analyse_indexes)!=len(s2.analyse_indexes)):
+            to_return=False
+        else:
+            for i in range(len(s1.analyse_indexes)):
+                if (self.compare_indexes(s1.analyse_indexes[i], s2.analyse_indexes[i])==False):
+                    to_return=False
+                    break
+        return to_return
+
+    def compare_indexes(self, ai1:AnalyseIndex, ai2:AnalyseIndex):
+        to_return = True
+        if not (ai1.event_type==ai2.event_type):
+            to_return = False
+        if (ai1.event_type=='n'):
+            if (ai1.rhythm_note_index[0]!=ai2.rhythm_note_index[0]) :
+                to_return = False
+            if (ai1.pitch_number_index[0]!=ai2.pitch_number_index[0]) :
+                to_return = False
+        elif (ai1.event_type=='c'):
+            if (ai1.rhythm_chord_index[0]!=ai2.rhythm_chord_index[0]):
+                to_return = False
+            if (ai1.chord_pitches_index[0]!=ai2.chord_pitches_index[0]):
+                to_return = False
+        elif (ai1.event_type=='r'):
+            if (ai1.rhythm_rest_index[0]!=ai2.rhythm_rest_index[0]):
+                to_return = False
+        return to_return
+
     def __init__(self):
         print("hello - I'm an AnalysePart...")
         self.analyse_indexes = []
+        self.measure_indexes = {} # a dictionary instead of a list because there might be a pickup bar
+        
+        self.measure_analyse_indexes_list = [] # each element is a list of AnalyseIndex
+        self.measure_analyse_indexes_dictionary = {} # index of each chord occurrence
         
         self.pitches = [0] * 128
         self.pitch_list = []
@@ -98,6 +135,13 @@ class AnalysePart:
 
         self.part = None
 
+    def find_section(self, section_to_find:AnalyseSection, sections_to_search):
+        i = 0
+        for s in sections_to_search:
+            if self.compare_sections(s, section_to_find):
+                return i
+            i += 1
+        return -1
 
     def find_chord(self, chord):
         chord_index=0
@@ -134,7 +178,22 @@ class AnalysePart:
 
         event_index = 0
         last_note_pitch = -1
+        current_measure=-1
+        measure_analyse_indexes = AnalyseSection()
         for n in self.part.flat.notesAndRests:
+            if (n.measureNumber>current_measure):
+                self.measure_indexes[n.measureNumber] = event_index
+                current_measure = n.measureNumber
+                if (len(measure_analyse_indexes.analyse_indexes)>0): #first time through will be empty
+                    index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list)
+                    if index == -1:
+                        self.measure_analyse_indexes_list.append(measure_analyse_indexes)
+                        index = len(self.measure_analyse_indexes_list)-1
+                        self.measure_analyse_indexes_dictionary[index] = [current_measure-1]
+                    else:
+                        self.measure_analyse_indexes_dictionary[index].append(current_measure-1)
+                    measure_analyse_indexes = AnalyseSection()
+
             ai = AnalyseIndex(event_index)
             if n.isRest:
                 ai.event_type = 'r'
@@ -225,6 +284,7 @@ class AnalysePart:
                 self.note_count += 1
             
             self.analyse_indexes.append(ai)
+            measure_analyse_indexes.analyse_indexes.append(ai)
             event_index = event_index + 1 
 
         #for i in range (128):
@@ -247,7 +307,10 @@ class AnalysePart:
         #print(self.chord_intervals_list)
         #print(self.chord_intervals_dictionary)
 
-        print (self.chord_common_name_dictionary)
+        print("measure analysis diectionary...")
+        print (self.measure_analyse_indexes_dictionary)
+        print("end of measure analysis...")
+        #print (self.chord_common_name_dictionary)
  
         #make lists of index and totals then sort by totals for eg most common pitch / rhythm etc
         #lists
