@@ -25,12 +25,28 @@ class AnalyseIndex:
         self.rhythm_note_index = [-1, -1]
         self.rhythm_chord_index = [-1, -1]
         self.rhythm_rest_index = [-1, -1]
+    
+    def print_info(self):
+        print("EventIndex..." + str(self.event_index) + " - type " + self.event_type)
+        if (self.event_type=='n'):
+            print(self.pitch_name_index + self.pitch_number_index + self.interval_index)
+            print ("rhythm " + str(self.rhythm_note_index))
+        elif (self.event_type=='c'):
+            print(self.chord_pitches_index + self.chord_interval_index + self.chord_name_index)
+            print ("rhythm " + str(self.rhythm_chord_index))
+        elif (self.event_type=='r'):
+            print("rhythm " + str(self.rhythm_rest_index))
+        
 
 class AnalyseSection:
     def __init__(self):
         self.analyse_indexes = [] # all the notes etc in the section
         self.section_start_event_indexes = [] # the event indexes where this section occurs
         
+    def print_info(self):
+        print("section length = " + str(len(self.analyse_indexes)))
+        #for ai in self.analyse_indexes:
+            #ai.print_info
 
 class MusicAnalyser:
     score = None
@@ -65,7 +81,7 @@ class MusicAnalyser:
 class AnalysePart:
     
     def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection):
-        to_return = False
+        to_return = True
         if (len(s1.analyse_indexes)!=len(s2.analyse_indexes)):
             to_return=False
         else:
@@ -97,6 +113,8 @@ class AnalysePart:
     def __init__(self):
         print("hello - I'm an AnalysePart...")
         self.analyse_indexes = []
+        self.analyse_indexes_list = []
+        self.analyse_indexes_dictionary = {}
         self.measure_indexes = {} # a dictionary instead of a list because there might be a pickup bar
         
         self.measure_analyse_indexes_list = [] # each element is a list of AnalyseIndex
@@ -143,6 +161,14 @@ class AnalysePart:
             i += 1
         return -1
 
+    def find_analyse_index(self, ai):
+        ai_index = 0
+        for a in self.analyse_indexes_list:
+            if self.compare_indexes(ai, self.analyse_indexes[ai_index]):
+                return ai_index
+            ai_index += 1
+        return -1
+
     def find_chord(self, chord):
         chord_index=0
         find = sorted(p.midi for p in chord.pitches)
@@ -185,7 +211,9 @@ class AnalysePart:
                 self.measure_indexes[n.measureNumber] = event_index
                 current_measure = n.measureNumber
                 if (len(measure_analyse_indexes.analyse_indexes)>0): #first time through will be empty
+                    measure_analyse_indexes.print_info()
                     index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list)
+                    print ("found section at " + str(index))
                     if index == -1:
                         self.measure_analyse_indexes_list.append(measure_analyse_indexes)
                         index = len(self.measure_analyse_indexes_list)-1
@@ -203,7 +231,7 @@ class AnalysePart:
                     self.rhythm_rest_dictionary[d] = [event_index]
                 else:
                     self.rhythm_rest_dictionary[d].append(event_index)
-                ai.rhythm_rest_index = [self.rhythm_rest_dictionary.get(d), len(self.rhythm_rest_dictionary.get(d))-1]
+                ai.rhythm_rest_index = [d, len(self.rhythm_rest_dictionary.get(d))-1]
                 
                 last_note_pitch = -1
                 self.rest_duration += d
@@ -216,7 +244,7 @@ class AnalysePart:
                     self.rhythm_chord_dictionary[d] = [event_index]
                 else:
                     self.rhythm_chord_dictionary[d].append(event_index)
-                ai.rhythm_chord_dictionary = [self.rhythm_chord_dictionary.get(d), len(self.rhythm_chord_dictionary.get(d))-1]
+                ai.rhythm_chord_index = [d, len(self.rhythm_chord_dictionary.get(d))-1]
                 
                 index = self.find_chord(n)
                 if index == -1:
@@ -251,7 +279,7 @@ class AnalysePart:
                 
                 self.chord_duration += d
                 self.chord_count += 1
-            elif not n.isChord:
+            elif n.isChord == False:
                 ai.event_type = 'n'
                 
                 self.pitches[n.pitch.midi] += 1
@@ -277,15 +305,42 @@ class AnalysePart:
                     self.rhythm_note_dictionary[d] = [event_index]
                 else:
                     self.rhythm_note_dictionary[d].append(event_index)
-                ai.rhythm_note_dictionary = [self.rhythm_note_dictionary.get(d), len(self.rhythm_note_dictionary.get(d))-1]
+                ai.rhythm_note_index = [d, len(self.rhythm_note_dictionary.get(d))-1]
                 
                 last_note_pitch = n.pitch.midi
                 self.note_duration += d
                 self.note_count += 1
             
+            index = self.find_analyse_index(ai)
+            if index == -1:
+                self.analyse_indexes_list.append(ai)
+                index = len(self.analyse_indexes_list)-1
+                self.analyse_indexes_dictionary[index] = [event_index]
+            else:
+                self.analyse_indexes_dictionary[index].append(event_index)
+            
+
             self.analyse_indexes.append(ai)
             measure_analyse_indexes.analyse_indexes.append(ai)
             event_index = event_index + 1 
+
+        
+
+        
+        for i in range (19):
+            self.analyse_indexes[i].print_info()
+            #print(self.compare_indexes(self.analyse_indexes[0], self.analyse_indexes[i]))
+            
+
+        print ("rhythm chord dictionary")
+        print(self.rhythm_chord_dictionary)
+        print ("rhythm note dictionary")
+        print(self.rhythm_note_dictionary)
+        print ("rhythm rest dictionary")
+        print(self.rhythm_rest_dictionary)
+
+        print ("measure_analyse_indexes_dictionary")
+        print(self.measure_analyse_indexes_dictionary)
 
         #for i in range (128):
             #if self.pitches[i]>0:
