@@ -118,7 +118,11 @@ class AnalysePart:
         self.measure_indexes = {} # a dictionary instead of a list because there might be a pickup bar
         
         self.measure_analyse_indexes_list = [] # each element is a list of AnalyseIndex
-        self.measure_analyse_indexes_dictionary = {} # index of each chord occurrence
+        self.measure_analyse_indexes_dictionary = {} # index of each measure occurrence
+        self.measure_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
+
+        self.measure_groups_list = [] # each element is a list of measure numbers
+        self.measure_groups_dictionary = {} # measure indexes where this gruop is used
         
         self.pitches = [0] * 128
         self.pitch_list = []
@@ -191,7 +195,67 @@ class AnalysePart:
         pitches = sorted(p.midi for p in chord.pitches)
         intervals = [p-p1 for p in pitches]
         return intervals
-        
+    
+    def when_is_measure_next_used(self, measure_index):
+        mia = self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]]
+        if len(mia)-1>self.measure_analyse_indexes_all[measure_index][1]:
+            return mia[self.measure_analyse_indexes_all[measure_index][1]+1] 
+        else:
+            return -1
+
+    def is_meausre_used_at(self, current_measure_index, check_measure_index):
+        print ("is measure used at - " + str(current_measure_index) + " and " + str(check_measure_index))
+        if not check_measure_index in self.measure_analyse_indexes_all:
+            return False
+        else:    
+            if (self.measure_analyse_indexes_all[current_measure_index][0]==self.measure_analyse_indexes_all[check_measure_index][0]):
+                print("returning true")
+                return True
+            else:
+                print("returning false")
+                return False
+
+    def find_measure_group(self, mg):
+        mg_index=0
+        mg_index = 0
+        for measure_groups in self.measure_groups_list:
+            for group in measure_groups:
+                if mg==group:
+                    return mg_index
+            mg_index += 1
+        return -1
+
+    def calculate_measure_groups(self):
+        next_used_at = 1
+        group_size = 1
+        gap = 1
+        skip=0
+        print("calculing measure gruops")
+        for look_at_measure in self.measure_analyse_indexes_all:
+            if (skip>0):
+                skip-=1
+                continue
+
+            next_used_at = self.when_is_measure_next_used(look_at_measure)
+            if next_used_at>-1:
+                gap = next_used_at - look_at_measure
+                if gap>1:
+                    group_size=1
+                    while (self.is_meausre_used_at(look_at_measure + group_size, look_at_measure + group_size + gap) and group_size<gap):
+                        group_size+=1
+                    
+                    group_size-=1
+                        
+                    if (group_size>0):
+                        measure_group = [look_at_measure, look_at_measure + group_size]
+                        measure_group_index = self.find_measure_group(measure_group)
+                        if (measure_group_index==-1): #ie need to add 1st and 2nd occurance.  When you come to 2nd and 3rd occurance - the 2nd occurance will already have been added.  Does it this way to avoid not adding the final occurance
+                            self.measure_groups_list.append([measure_group])
+                            self.measure_groups_list[len(self.measure_groups_list)-1].append([look_at_measure + gap, look_at_measure + gap + group_size])
+                        else:
+                            self.measure_groups_list[measure_group_index].append([look_at_measure + gap, look_at_measure + gap + group_size])
+                    
+                        skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
 
 
     def setPart(self, p):
@@ -218,8 +282,10 @@ class AnalysePart:
                         self.measure_analyse_indexes_list.append(measure_analyse_indexes)
                         index = len(self.measure_analyse_indexes_list)-1
                         self.measure_analyse_indexes_dictionary[index] = [current_measure-1]
+                        self.measure_analyse_indexes_all[current_measure-1] = [index, 0]
                     else:
                         self.measure_analyse_indexes_dictionary[index].append(current_measure-1)
+                        self.measure_analyse_indexes_all[current_measure-1] = [index, len(self.measure_analyse_indexes_dictionary[index])-1]
                     measure_analyse_indexes = AnalyseSection()
 
             ai = AnalyseIndex(event_index)
@@ -324,9 +390,19 @@ class AnalysePart:
             measure_analyse_indexes.analyse_indexes.append(ai)
             event_index = event_index + 1 
 
-        
-
-        
+        #add last measure
+        if (len(measure_analyse_indexes.analyse_indexes)>0):
+            index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list)
+            print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) )
+            if index == -1:
+                self.measure_analyse_indexes_list.append(measure_analyse_indexes)
+                index = len(self.measure_analyse_indexes_list)-1
+                self.measure_analyse_indexes_dictionary[index] = [current_measure]
+                self.measure_analyse_indexes_all[current_measure] = [index, 0]
+            else:
+                self.measure_analyse_indexes_dictionary[index].append(current_measure)
+                self.measure_analyse_indexes_all[current_measure] = [index, len(self.measure_analyse_indexes_dictionary[index])-1]
+            
         for i in range (19):
             self.analyse_indexes[i].print_info()
             #print(self.compare_indexes(self.analyse_indexes[0], self.analyse_indexes[i]))
@@ -362,14 +438,26 @@ class AnalysePart:
         #print(self.chord_intervals_list)
         #print(self.chord_intervals_dictionary)
 
-        print("measure analysis diectionary...")
+        print("\nmeasure analysis diectionary...")
         print (self.measure_analyse_indexes_dictionary)
         print("end of measure analysis...")
+        
+        print("\nmeasure_analyse_indexes_all...")
+        print (self.measure_analyse_indexes_all)
+        print("end of measure_analyse_indexes_all...")
+        
+        self.calculate_measure_groups()
+        print("\nmeasure_groups_list...")
+        print (self.measure_groups_list)
+        print("end of measure_groups_list...")
+        
+        
         #print (self.chord_common_name_dictionary)
  
         #make lists of index and totals then sort by totals for eg most common pitch / rhythm etc
         #lists
         self.count_pitches = self.count_list(self.pitch_list)
+        print("\nPitches count...")
         print(self.count_pitches)
         #dictionaries
         self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
