@@ -14,6 +14,7 @@ class AnalyseIndex:
         self.event_index = ei
         self.event_type = '' # n c r
 
+        #[the particular eg chord_interval_index, the occurance of that particular event in eg AnalysePart.chord_pitches_dictionary]
         self.chord_interval_index = [-1, -1] 
         self.chord_pitches_index = [-1, -1]
         self.chord_name_index = ['', -1]
@@ -121,9 +122,10 @@ class AnalysePart:
         self.measure_analyse_indexes_dictionary = {} # index of each measure occurrence
         self.measure_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
 
-        self.measure_groups_list = [] # each element is a list of measure numbers
-        self.measure_groups_dictionary = {} # measure indexes where this gruop is used
+        self.measure_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
         
+        self.repeated_measures_not_in_groups_dictionary = {} # measure index, list of repetition
+
         self.pitches = [0] * 128
         self.pitch_list = []
         self.pitch_name_dictionary = {}
@@ -204,15 +206,12 @@ class AnalysePart:
             return -1
 
     def is_meausre_used_at(self, current_measure_index, check_measure_index):
-        print ("is measure used at - " + str(current_measure_index) + " and " + str(check_measure_index))
         if not check_measure_index in self.measure_analyse_indexes_all:
             return False
         else:    
             if (self.measure_analyse_indexes_all[current_measure_index][0]==self.measure_analyse_indexes_all[check_measure_index][0]):
-                print("returning true")
                 return True
             else:
-                print("returning false")
                 return False
 
     def find_measure_group(self, mg):
@@ -224,6 +223,24 @@ class AnalysePart:
                     return mg_index
             mg_index += 1
         return -1
+
+    def calculate_repeated_measures_not_in_groups(self):
+        for measure_indexes in self.measure_analyse_indexes_dictionary.values():
+            if len(measure_indexes)>1: # the measure is used more than once
+                measures=[]
+                for measure_index in measure_indexes:
+                    if not self.in_measure_groups(measure_index):
+                        measures.append(measure_index)
+                
+                if len(measures)>1:
+                    self.repeated_measures_not_in_groups_dictionary[measures[0]] = measures[1:]
+
+    def in_measure_groups(self, measure_index):
+        for mgl in self.measure_groups_list:
+            for mg in mgl:
+                if measure_index>=mg[0] and measure_index<=mg[1]:
+                    return True
+        return False
 
     def calculate_measure_groups(self):
         next_used_at = 1
@@ -450,6 +467,11 @@ class AnalysePart:
         print("\nmeasure_groups_list...")
         print (self.measure_groups_list)
         print("end of measure_groups_list...")
+        
+        self.calculate_repeated_measures_not_in_groups()
+        print("\nrepeated measures not in groups...")
+        print (self.repeated_measures_not_in_groups_dictionary)
+        print("end of repeated measures not in groups...")
         
         
         #print (self.chord_common_name_dictionary)
