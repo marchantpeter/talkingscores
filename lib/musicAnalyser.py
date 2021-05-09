@@ -81,22 +81,56 @@ class MusicAnalyser:
 
 class AnalysePart:
     
-    def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection):
+    def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection, compare_type): 
         to_return = True
         if (len(s1.analyse_indexes)!=len(s2.analyse_indexes)):
             to_return=False
         else:
             for i in range(len(s1.analyse_indexes)):
-                if (self.compare_indexes(s1.analyse_indexes[i], s2.analyse_indexes[i])==False):
+                if (compare_type==0 and self.compare_indexes(s1.analyse_indexes[i], s2.analyse_indexes[i])==False):
+                    to_return=False
+                    break
+                elif(compare_type==1 and self.compare_indexes_rhythm(s1.analyse_indexes[i], s2.analyse_indexes[i])==False):
+                    to_return=False
+                    break
+                elif(compare_type==2 and self.compare_indexes_intervals(s1.analyse_indexes[i], s2.analyse_indexes[i])==False):
                     to_return=False
                     break
         return to_return
+
+    #one might have a chord or play a note in octaves - and this will say the intervals don't match - even if they kind of do...
+    def compare_indexes_intervals(self, ai1:AnalyseIndex, ai2:AnalyseIndex):
+        to_return = True
+        if not (ai1.event_type==ai2.event_type):
+            to_return = False
+        elif(ai1.event_type=='n'):
+            if(ai1.interval_index[0]!=ai2.interval_index[0]):
+                to_return = False
+        
+        return to_return
+
+    #rest durations must match.  Chords / single notes are interchangeable - but their durations must match
+    def compare_indexes_rhythm(self, ai1:AnalyseIndex, ai2:AnalyseIndex):
+        to_return = True
+        if (ai1.event_type=='r' and not ai2.event_type=='r'):
+            to_return = False
+        elif ( (ai1.event_type=='n' or ai1.event_type=='c') and ai2.event_type=='r'):
+            to_return = False
+        elif ( (ai1.rhythm_chord_index[0]!=ai2.rhythm_chord_index[0])):
+            to_return = False
+        elif ( (ai1.rhythm_note_index[0]!=ai2.rhythm_note_index[0])):
+            to_return = False
+        elif ( (ai1.rhythm_rest_index[0]!=ai2.rhythm_rest_index[0])):
+            to_return = False
+
+        return to_return
+        
 
     def compare_indexes(self, ai1:AnalyseIndex, ai2:AnalyseIndex):
         to_return = True
         if not (ai1.event_type==ai2.event_type):
             to_return = False
-        if (ai1.event_type=='n'):
+        elif (ai1.event_type=='n'):
             if (ai1.rhythm_note_index[0]!=ai2.rhythm_note_index[0]) :
                 to_return = False
             if (ai1.pitch_number_index[0]!=ai2.pitch_number_index[0]) :
@@ -121,11 +155,23 @@ class AnalysePart:
         self.measure_analyse_indexes_list = [] # each element is a list of AnalyseIndex
         self.measure_analyse_indexes_dictionary = {} # index of each measure occurrence
         self.measure_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
-
         self.measure_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
-        
         self.repeated_measures_not_in_groups_dictionary = {} # measure index, list of repetition
 
+        self.measure_rhythm_analyse_indexes_list = [] # each element is a list of AnalyseIndex
+        self.measure_rhythm_analyse_indexes_dictionary = {} # index of each measure occurrence
+        self.measure_rhythm_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
+        self.measure_rhythm_not_full_match_all = []
+        self.measure_rhythm_not_full_match_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
+        self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of repetition
+        
+        self.measure_intervals_analyse_indexes_list = [] # each element is a list of AnalyseIndex
+        self.measure_intervals_analyse_indexes_dictionary = {} # index of each measure occurrence
+        self.measure_intervals_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
+        self.measure_intervals_not_full_match_all = []
+        self.measure_intervals_not_full_match_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
+        self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of repetition
+        
         self.pitches = [0] * 128
         self.pitch_list = []
         self.pitch_name_dictionary = {}
@@ -159,10 +205,19 @@ class AnalysePart:
 
         self.part = None
 
-    def find_section(self, section_to_find:AnalyseSection, sections_to_search):
+    #if a section doesn't contain any consecutive notes - then it doesn't contain any intervals...
+    #all the interval indexes will be -1 so compare_sections will think it is a match for intervals!
+    def does_section_contain_intervals(self, section:AnalyseSection):
+        for ai in section.analyse_indexes:
+            if (ai.interval_index[0]>-1):
+                return True
+        return False
+
+    #compare_type - 0 = all, 1=rhythm, 2=intervals
+    def find_section(self, section_to_find:AnalyseSection, sections_to_search, compare_type):
         i = 0
         for s in sections_to_search:
-            if self.compare_sections(s, section_to_find):
+            if self.compare_sections(s, section_to_find, compare_type):
                 return i
             i += 1
         return -1
@@ -223,6 +278,27 @@ class AnalysePart:
                     return mg_index
             mg_index += 1
         return -1
+
+    def calculate_rhythm_measures_not_full_match(self):
+        for measure_indexes in self.measure_rhythm_analyse_indexes_dictionary.values():
+            if len(measure_indexes)>1: # the rhythm of this measure is used more than once
+                measures=[]
+                for measure_index in measure_indexes:
+                    if (len(self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]])==1):
+                        measures.append(measure_index)               
+                if len(measures)>1:
+                    self.measure_rhythm_not_full_match_all.append(measures)
+
+    def calculate_intervals_measures_not_full_match(self):
+        for measure_indexes in self.measure_intervals_analyse_indexes_dictionary.values():
+            if len(measure_indexes)>1: # the intervals of this measure is used more than once
+                measures=[]
+                for measure_index in measure_indexes:
+                    if (len(self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]])==1):
+                        measures.append(measure_index)               
+                if len(measures)>1:
+                    self.measure_intervals_not_full_match_all.append(measures)
+
 
     def calculate_repeated_measures_not_in_groups(self):
         for measure_indexes in self.measure_analyse_indexes_dictionary.values():
@@ -292,9 +368,8 @@ class AnalysePart:
                 self.measure_indexes[n.measureNumber] = event_index
                 current_measure = n.measureNumber
                 if (len(measure_analyse_indexes.analyse_indexes)>0): #first time through will be empty
-                    measure_analyse_indexes.print_info()
-                    index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list)
-                    print ("found section at " + str(index))
+                    #measure_analyse_indexes.print_info()
+                    index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
                     if index == -1:
                         self.measure_analyse_indexes_list.append(measure_analyse_indexes)
                         index = len(self.measure_analyse_indexes_list)-1
@@ -303,6 +378,30 @@ class AnalysePart:
                     else:
                         self.measure_analyse_indexes_dictionary[index].append(current_measure-1)
                         self.measure_analyse_indexes_all[current_measure-1] = [index, len(self.measure_analyse_indexes_dictionary[index])-1]
+                    
+                    #measures with matching rhythm
+                    index = self.find_section(measure_analyse_indexes, self.measure_rhythm_analyse_indexes_list, 1)
+                    if index == -1:
+                        self.measure_rhythm_analyse_indexes_list.append(measure_analyse_indexes)
+                        index = len(self.measure_rhythm_analyse_indexes_list)-1
+                        self.measure_rhythm_analyse_indexes_dictionary[index] = [current_measure-1]
+                        self.measure_rhythm_analyse_indexes_all[current_measure-1] = [index, 0]
+                    else:
+                        self.measure_rhythm_analyse_indexes_dictionary[index].append(current_measure-1)
+                        self.measure_rhythm_analyse_indexes_all[current_measure-1] = [index, len(self.measure_rhythm_analyse_indexes_dictionary[index])-1]
+                    
+                    #measures with matching intervals
+                    if (self.does_section_contain_intervals(measure_analyse_indexes)):
+                        index = self.find_section(measure_analyse_indexes, self.measure_intervals_analyse_indexes_list, 2)
+                        if index == -1:
+                            self.measure_intervals_analyse_indexes_list.append(measure_analyse_indexes)
+                            index = len(self.measure_intervals_analyse_indexes_list)-1
+                            self.measure_intervals_analyse_indexes_dictionary[index] = [current_measure-1]
+                            self.measure_intervals_analyse_indexes_all[current_measure-1] = [index, 0]
+                        else:
+                            self.measure_intervals_analyse_indexes_dictionary[index].append(current_measure-1)
+                            self.measure_intervals_analyse_indexes_all[current_measure-1] = [index, len(self.measure_intervals_analyse_indexes_dictionary[index])-1]
+                        
                     measure_analyse_indexes = AnalyseSection()
 
             ai = AnalyseIndex(event_index)
@@ -409,7 +508,7 @@ class AnalysePart:
 
         #add last measure
         if (len(measure_analyse_indexes.analyse_indexes)>0):
-            index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list)
+            index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
             print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) )
             if index == -1:
                 self.measure_analyse_indexes_list.append(measure_analyse_indexes)
@@ -419,7 +518,30 @@ class AnalysePart:
             else:
                 self.measure_analyse_indexes_dictionary[index].append(current_measure)
                 self.measure_analyse_indexes_all[current_measure] = [index, len(self.measure_analyse_indexes_dictionary[index])-1]
+        
+            #measures with matching rhythm
+            index = self.find_section(measure_analyse_indexes, self.measure_rhythm_analyse_indexes_list, 1)
+            if index == -1:
+                self.measure_rhythm_analyse_indexes_list.append(measure_analyse_indexes)
+                index = len(self.measure_rhythm_analyse_indexes_list)-1
+                self.measure_rhythm_analyse_indexes_dictionary[index] = [current_measure]
+                self.measure_rhythm_analyse_indexes_all[current_measure] = [index, 0]
+            else:
+                self.measure_rhythm_analyse_indexes_dictionary[index].append(current_measure)
+                self.measure_rhythm_analyse_indexes_all[current_measure] = [index, len(self.measure_rhythm_analyse_indexes_dictionary[index])-1]
             
+            #measures with matching intervals
+            if (self.does_section_contain_intervals(measure_analyse_indexes)):
+                index = self.find_section(measure_analyse_indexes, self.measure_intervals_analyse_indexes_list, 2)
+                if index == -1:
+                    self.measure_intervals_analyse_indexes_list.append(measure_analyse_indexes)
+                    index = len(self.measure_intervals_analyse_indexes_list)-1
+                    self.measure_intervals_analyse_indexes_dictionary[index] = [current_measure]
+                    self.measure_intervals_analyse_indexes_all[current_measure] = [index, 0]
+                else:
+                    self.measure_intervals_analyse_indexes_dictionary[index].append(current_measure-1)
+                    self.measure_intervals_analyse_indexes_all[current_measure] = [index, len(self.measure_intervals_analyse_indexes_dictionary[index])-1]
+                
         for i in range (19):
             self.analyse_indexes[i].print_info()
             #print(self.compare_indexes(self.analyse_indexes[0], self.analyse_indexes[i]))
@@ -471,7 +593,23 @@ class AnalysePart:
         self.calculate_repeated_measures_not_in_groups()
         print("\nrepeated measures not in groups...")
         print (self.repeated_measures_not_in_groups_dictionary)
-        print("end of repeated measures not in groups...")
+        
+        print("\nrhythm measures dictionary...")
+        print (self.measure_rhythm_analyse_indexes_dictionary)
+        
+        self.calculate_rhythm_measures_not_full_match()
+        print("\nrhythm measures not full match...")
+        print (self.measure_rhythm_not_full_match_all)
+        
+        self.calculate_intervals_measures_not_full_match()
+        print("\nintervals measures not full match...")
+        print (self.measure_intervals_not_full_match_all)
+        
+        print("\nmeasure rhythm analysis diectionary...")
+        print (self.measure_rhythm_analyse_indexes_dictionary)
+        
+        print("\nmeasure intervals analysis diectionary...")
+        print (self.measure_intervals_analyse_indexes_dictionary)
         
         
         #print (self.chord_common_name_dictionary)
