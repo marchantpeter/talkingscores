@@ -52,6 +52,9 @@ class AnalyseSection:
 class MusicAnalyser:
     score = None
     analyse_parts = []
+    summary = "this is the summary..."
+    repetition_right_hand = "There are no repeated measures..."
+    repetition_left_hand = "There are no repeated measures..."
 
     def __init__(self):
         print("hello - I'm a MusicAnalyser...")
@@ -75,7 +78,9 @@ class MusicAnalyser:
         for ap in self.analyse_parts:
             print ("len interval dictionary = " + str(len(ap.interval_dictionary)))
         
-    
+        self.repetition_left_hand = self.analyse_parts[1].describe_repetition()
+        self.repetition_right_hand = self.analyse_parts[0].describe_repetition()
+
     def count_pitches(self):
         print("counting pitches")
 
@@ -350,6 +355,24 @@ class AnalysePart:
                     
                         skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
 
+    def describe_repetition(self):
+        repetition = ""
+        if len(self.measure_groups_list)>0:
+            for group in self.measure_groups_list:
+                if (group[0][1]-group[0][0]==1): # x and y or x to y.
+                    repetition+="Measures " + str(group[0][0]) + " and " + str(group[0][1])
+                else:
+                    repetition+="Measures " + str(group[0][0]) + " to " + str(group[0][1])
+                repetition+= " are used at "
+                for index, ms in enumerate(group[1:]):
+                    if index==len(group)-1:
+                        repetition += " and "
+                    
+                    repetition+= str(ms[0])
+                repetition += ".  "
+        else:
+            repetition+="There are no repeating roups of measures...  "
+        return repetition
 
     def setPart(self, p):
         self.part = p
