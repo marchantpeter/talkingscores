@@ -311,20 +311,31 @@ class AnalysePart:
                 if len(measures)>1:
                     self.measure_intervals_not_full_match_all.append(measures)
 
+    def calculate_repeated_measures_not_in_groups2(self, measures_list, groups_list, output_dictionary):
+        for measure_indexes in measures_list:
+            if len(measure_indexes)>1: # the measure is used more than once
+                measures=[]
+                for measure_index in measure_indexes:
+                    if not self.in_measure_groups(measure_index, groups_list):
+                        measures.append(measure_index)
+                
+                if len(measures)>1:
+                    output_dictionary[measures[0]] = measures[1:]
+
 
     def calculate_repeated_measures_not_in_groups(self):
         for measure_indexes in self.measure_analyse_indexes_dictionary.values():
             if len(measure_indexes)>1: # the measure is used more than once
                 measures=[]
                 for measure_index in measure_indexes:
-                    if not self.in_measure_groups(measure_index):
+                    if not self.in_measure_groups(measure_index, self.measure_groups_list):
                         measures.append(measure_index)
                 
                 if len(measures)>1:
                     self.repeated_measures_not_in_groups_dictionary[measures[0]] = measures[1:]
 
-    def in_measure_groups(self, measure_index):
-        for mgl in self.measure_groups_list:
+    def in_measure_groups(self, measure_index, groups_list):
+        for mgl in groups_list:
             for mg in mgl:
                 if measure_index>=mg[0] and measure_index<=mg[1]:
                     return True
@@ -406,7 +417,8 @@ class AnalysePart:
                 for index, ms in enumerate(group[1:]):
                     if index==len(group)-1 and index>0:
                         repetition += " and "
-                    
+                    elif index<len(group)-1 and index>0:
+                        repetition += ", "  
                     repetition+= str(ms[0])
                 repetition += ".  "
             
@@ -415,6 +427,8 @@ class AnalysePart:
             for index, m in enumerate(ms):
                 if index==len(ms)-1 and index>0:
                     repetition += " and "
+                elif index<len(ms)-1 and index>0:
+                    repetition += ", "
                 repetition+=str(m)
             repetition += ".  "
 
@@ -433,15 +447,19 @@ class AnalysePart:
                 for index, ms in enumerate(group[1:]):
                     if index==len(group)-1 and index>0:
                         rhythm_repetition += " and "
+                    elif index<len(group)-1 and index>0:
+                        rhythm_repetition += ", "
                     
                     rhythm_repetition += str(ms[0])
                 rhythm_repetition += ".  "
 
         for key, ms in self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary.items():
-            rhythm_repetition += "The intervals in bar " + str(key) + " are used at "
+            rhythm_repetition += "The rhythm in bar " + str(key) + " are used at "
             for index, m in enumerate(ms):
                 if index==len(ms)-1 and index>0:
                     rhythm_repetition += " and "
+                elif index<len(ms)-1 and index>0:
+                    rhythm_repetition += ", "
                 rhythm_repetition+=str(m)
             rhythm_repetition += ".  "
         
@@ -462,6 +480,8 @@ class AnalysePart:
                 for index, ms in enumerate(group[1:]):
                     if index==len(group)-1 and index>0:
                         interval_repetition += " and "
+                    elif index<len(group)-1 and index>0:
+                        interval_repetition += ", "
                     
                     interval_repetition += str(ms[0])
                 interval_repetition += ".  "
@@ -471,6 +491,8 @@ class AnalysePart:
             for index, m in enumerate(ms):
                 if index==len(ms)-1 and index>0:
                     interval_repetition += " and "
+                elif index<len(ms)-1 and index>0:
+                    interval_repetition += ", "
                 interval_repetition+=str(m)
             interval_repetition += ".  "
         
@@ -533,6 +555,7 @@ class AnalysePart:
                             self.measure_intervals_analyse_indexes_all[current_measure-1] = [index, len(self.measure_intervals_analyse_indexes_dictionary[index])-1]
                         
                     measure_analyse_indexes = AnalyseSection()
+                    last_note_pitch=-1 # reset interval comparison for each measure
 
             ai = AnalyseIndex(event_index)
             if n.isRest:
@@ -639,7 +662,7 @@ class AnalysePart:
         #add last measure
         if (len(measure_analyse_indexes.analyse_indexes)>0):
             index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
-            print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) )
+            print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) + " and current measure = " + str(current_measure) )
             if index == -1:
                 self.measure_analyse_indexes_list.append(measure_analyse_indexes)
                 index = len(self.measure_analyse_indexes_list)-1
@@ -669,7 +692,7 @@ class AnalysePart:
                     self.measure_intervals_analyse_indexes_dictionary[index] = [current_measure]
                     self.measure_intervals_analyse_indexes_all[current_measure] = [index, 0]
                 else:
-                    self.measure_intervals_analyse_indexes_dictionary[index].append(current_measure-1)
+                    self.measure_intervals_analyse_indexes_dictionary[index].append(current_measure)
                     self.measure_intervals_analyse_indexes_all[current_measure] = [index, len(self.measure_intervals_analyse_indexes_dictionary[index])-1]
                 
         for i in range (19):
@@ -727,6 +750,13 @@ class AnalysePart:
         print("\nrhythm measures dictionary...")
         print (self.measure_rhythm_analyse_indexes_dictionary)
         
+        print("\nintervals measures dictionary...")
+        print (self.measure_intervals_analyse_indexes_dictionary)
+        
+        print("\nmeasure intervals analyse indexes list...")
+        print (self.measure_intervals_analyse_indexes_list)
+        
+
         self.calculate_rhythm_measures_not_full_match()
         print("\nrhythm measures not full match...")
         print (self.measure_rhythm_not_full_match_all)
@@ -734,11 +764,16 @@ class AnalysePart:
         self.calculate_groups(self.measure_rhythm_not_full_match_all, self.measure_rhythm_not_full_match_groups_list)
         print("\nrhythm groups not full match...")
         print (self.measure_rhythm_not_full_match_groups_list)
+        self.calculate_repeated_measures_not_in_groups2(self.measure_rhythm_not_full_match_all, self.measure_rhythm_not_full_match_groups_list, self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary)
+        print(self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary)
 
         self.calculate_intervals_measures_not_full_match()
         print("\nintervals measures not full match...")
         print (self.measure_intervals_not_full_match_all)
-        
+        self.calculate_repeated_measures_not_in_groups2(self.measure_intervals_not_full_match_all, self.measure_intervals_not_full_match_groups_list, self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary)
+        print (self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary)
+
+
         self.calculate_groups(self.measure_intervals_not_full_match_all, self.measure_intervals_not_full_match_groups_list)
         print("\nintervals groups not full match...")
         print (self.measure_intervals_not_full_match_groups_list)
