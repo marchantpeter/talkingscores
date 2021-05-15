@@ -166,7 +166,7 @@ class AnalysePart:
         self.measure_rhythm_analyse_indexes_list = [] # each element is a list of AnalyseIndex
         self.measure_rhythm_analyse_indexes_dictionary = {} # index of each measure occurrence
         self.measure_rhythm_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
-        self.measure_rhythm_not_full_match_all = []
+        self.measure_rhythm_not_full_match_all = [] # [[1, 3, 6], [2, 4]]
         self.measure_rhythm_not_full_match_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
         self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of repetition
         
@@ -265,7 +265,14 @@ class AnalysePart:
         else:
             return -1
 
-    def is_meausre_used_at(self, current_measure_index, check_measure_index):
+    def are_measures_in(self, group_list, current_measure_index, check_measure_index):
+        for group in group_list:
+            if current_measure_index in group and check_measure_index in group:
+                return True
+        return False 
+        
+        
+    def is_measure_used_at(self, current_measure_index, check_measure_index):
         if not check_measure_index in self.measure_analyse_indexes_all:
             return False
         else:    
@@ -274,10 +281,10 @@ class AnalysePart:
             else:
                 return False
 
-    def find_measure_group(self, mg):
+    def find_measure_group(self, mg, to_list):
         mg_index=0
         mg_index = 0
-        for measure_groups in self.measure_groups_list:
+        for measure_groups in to_list:
             for group in measure_groups:
                 if mg==group:
                     return mg_index
@@ -323,12 +330,44 @@ class AnalysePart:
                     return True
         return False
 
+    #TODO - improve so it the first measure in the group can be used more than once
+    def calculate_groups(self, from_list, to_list):
+        next_used_at = 1
+        group_size = 1
+        gap = 1
+        skip=0
+        print("calcuating measure gruops - not full match")
+        for measures in from_list:
+            for index, measure in enumerate(measures):
+                if (index<len(measures)-1):
+                    next_used_at = measures[index+1]
+                    gap = next_used_at - measure
+                    if gap>1:
+                        group_size=1
+                        while (self.are_measures_in(from_list, measure + group_size, measure + group_size + gap) and group_size<gap):
+                            group_size+=1
+                        
+                        group_size-=1
+                            
+                        if (group_size>0):
+                            measure_group = [measure, measure + group_size]
+                            measure_group_index = self.find_measure_group(measure_group, to_list)
+                            if (measure_group_index==-1): #ie need to add 1st and 2nd occurance.  When you come to 2nd and 3rd occurance - the 2nd occurance will already have been added.  Does it this way to avoid not adding the final occurance
+                                to_list.append([measure_group])
+                                to_list[len(to_list)-1].append([measure + gap, measure + gap + group_size])
+                            else:
+                                to_list[measure_group_index].append([measure + gap, measure + gap + group_size])
+                        
+                            skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
+
+
+    #TODO - improve so it the first measure in the group can be used more than once
     def calculate_measure_groups(self):
         next_used_at = 1
         group_size = 1
         gap = 1
         skip=0
-        print("calculing measure gruops")
+        print("calculating measure groups")
         for look_at_measure in self.measure_analyse_indexes_all:
             if (skip>0):
                 skip-=1
@@ -339,14 +378,14 @@ class AnalysePart:
                 gap = next_used_at - look_at_measure
                 if gap>1:
                     group_size=1
-                    while (self.is_meausre_used_at(look_at_measure + group_size, look_at_measure + group_size + gap) and group_size<gap):
+                    while (self.is_measure_used_at(look_at_measure + group_size, look_at_measure + group_size + gap) and group_size<gap):
                         group_size+=1
                     
                     group_size-=1
                         
                     if (group_size>0):
                         measure_group = [look_at_measure, look_at_measure + group_size]
-                        measure_group_index = self.find_measure_group(measure_group)
+                        measure_group_index = self.find_measure_group(measure_group, self.measure_groups_list)
                         if (measure_group_index==-1): #ie need to add 1st and 2nd occurance.  When you come to 2nd and 3rd occurance - the 2nd occurance will already have been added.  Does it this way to avoid not adding the final occurance
                             self.measure_groups_list.append([measure_group])
                             self.measure_groups_list[len(self.measure_groups_list)-1].append([look_at_measure + gap, look_at_measure + gap + group_size])
@@ -360,18 +399,86 @@ class AnalysePart:
         if len(self.measure_groups_list)>0:
             for group in self.measure_groups_list:
                 if (group[0][1]-group[0][0]==1): # x and y or x to y.
-                    repetition+="Measures " + str(group[0][0]) + " and " + str(group[0][1])
+                    repetition+="Bars " + str(group[0][0]) + " and " + str(group[0][1])
                 else:
-                    repetition+="Measures " + str(group[0][0]) + " to " + str(group[0][1])
+                    repetition+="Bars " + str(group[0][0]) + " to " + str(group[0][1])
                 repetition+= " are used at "
                 for index, ms in enumerate(group[1:]):
-                    if index==len(group)-1:
+                    if index==len(group)-1 and index>0:
                         repetition += " and "
                     
                     repetition+= str(ms[0])
                 repetition += ".  "
-        else:
-            repetition+="There are no repeating roups of measures...  "
+            
+        for key, ms in self.repeated_measures_not_in_groups_dictionary.items():
+            repetition += "Bar " + str(key) + " is used at "
+            for index, m in enumerate(ms):
+                if index==len(ms)-1 and index>0:
+                    repetition += " and "
+                repetition+=str(m)
+            repetition += ".  "
+
+        if repetition == "":
+            repetition+="There are no repeated bars...  "
+
+        #rhythm
+        rhythm_repetition = ""
+        if len(self.measure_rhythm_not_full_match_groups_list)>0:
+            for group in self.measure_rhythm_not_full_match_groups_list:
+                if (group[0][1]-group[0][0]==1): # x and y or x to y.
+                    rhythm_repetition+="The rhythm in bars " + str(group[0][0]) + " and " + str(group[0][1])
+                else:
+                    rhythm_repetition+="The rhythm in bars " + str(group[0][0]) + " to " + str(group[0][1])
+                rhythm_repetition+= " are used at "
+                for index, ms in enumerate(group[1:]):
+                    if index==len(group)-1 and index>0:
+                        rhythm_repetition += " and "
+                    
+                    rhythm_repetition += str(ms[0])
+                rhythm_repetition += ".  "
+
+        for key, ms in self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary.items():
+            rhythm_repetition += "The intervals in bar " + str(key) + " are used at "
+            for index, m in enumerate(ms):
+                if index==len(ms)-1 and index>0:
+                    rhythm_repetition += " and "
+                rhythm_repetition+=str(m)
+            rhythm_repetition += ".  "
+        
+        if rhythm_repetition=="":
+            rhythm_repetition = "There are no bars with the same rhythm...  "
+
+        repetition += rhythm_repetition
+
+        #intervals
+        interval_repetition = ""
+        if len(self.measure_intervals_not_full_match_groups_list)>0:
+            for group in self.measure_intervals_not_full_match_groups_list:
+                if (group[0][1]-group[0][0]==1): # x and y or x to y.
+                    interval_repetition+="The intervals in bars " + str(group[0][0]) + " and " + str(group[0][1])
+                else:
+                    interval_repetition+="The intervals in bars " + str(group[0][0]) + " to " + str(group[0][1])
+                interval_repetition+= " are used at "
+                for index, ms in enumerate(group[1:]):
+                    if index==len(group)-1 and index>0:
+                        interval_repetition += " and "
+                    
+                    interval_repetition += str(ms[0])
+                interval_repetition += ".  "
+
+        for key, ms in self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary.items():
+            interval_repetition += "The intervals in bar " + str(key) + " are used at "
+            for index, m in enumerate(ms):
+                if index==len(ms)-1 and index>0:
+                    interval_repetition += " and "
+                interval_repetition+=str(m)
+            interval_repetition += ".  "
+        
+        if interval_repetition=="":
+            interval_repetition = "There are no bars with the same intervals...  "
+
+        repetition += interval_repetition
+
         return repetition
 
     def setPart(self, p):
@@ -623,11 +730,19 @@ class AnalysePart:
         self.calculate_rhythm_measures_not_full_match()
         print("\nrhythm measures not full match...")
         print (self.measure_rhythm_not_full_match_all)
-        
+
+        self.calculate_groups(self.measure_rhythm_not_full_match_all, self.measure_rhythm_not_full_match_groups_list)
+        print("\nrhythm groups not full match...")
+        print (self.measure_rhythm_not_full_match_groups_list)
+
         self.calculate_intervals_measures_not_full_match()
         print("\nintervals measures not full match...")
         print (self.measure_intervals_not_full_match_all)
         
+        self.calculate_groups(self.measure_intervals_not_full_match_all, self.measure_intervals_not_full_match_groups_list)
+        print("\nintervals groups not full match...")
+        print (self.measure_intervals_not_full_match_groups_list)
+
         print("\nmeasure rhythm analysis diectionary...")
         print (self.measure_rhythm_analyse_indexes_dictionary)
         
