@@ -52,9 +52,9 @@ class AnalyseSection:
 class MusicAnalyser:
     score = None
     analyse_parts = []
-    summary = "this is the summary..."
-    repetition_right_hand = "There are no repeated measures..."
-    repetition_left_hand = "There are no repeated measures..."
+    summary = ""
+    repetition_right_hand = ""
+    repetition_left_hand = ""
 
     def __init__(self):
         print("hello - I'm a MusicAnalyser...")
@@ -63,7 +63,7 @@ class MusicAnalyser:
         if not self.score == None: # it still gets called twice - I don't know why!
             print ("score already added...")
             return
-
+        
         self.score = sc
         part_index = 0
         self.analyse_parts = []
@@ -81,10 +81,25 @@ class MusicAnalyser:
         self.repetition_left_hand = self.analyse_parts[1].describe_repetition()
         self.repetition_right_hand = self.analyse_parts[0].describe_repetition()
 
+        self.summary_left_hand = self.analyse_parts[1].describe_summary()
+        self.summary_right_hand = self.analyse_parts[0].describe_summary()
+
+
     def count_pitches(self):
         print("counting pitches")
 
 class AnalysePart:
+
+    _DURATION_MAP = {
+        4.0: 'semibreve',
+        2.0: 'minim',
+        1.0: 'crotchet',
+        0.5: 'quaver',
+        0.25: 'semi-quaver',
+        0.125: 'demi-semi-quaver',
+        0.0625: 'hemi-demi-semi-quaver',
+        'zero': 'grace note',
+    }
     
     def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection, compare_type): 
         to_return = True
@@ -207,7 +222,7 @@ class AnalysePart:
         self.rest_count = 0
         self.chord_duration = 0
         self.chord_count = 0
-
+        
         self.part = None
 
     #if a section doesn't contain any consecutive notes - then it doesn't contain any intervals...
@@ -405,6 +420,66 @@ class AnalysePart:
                     
                         skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
 
+    def describe_percentage(self, percent):
+        if percent>99:
+            return "all"
+        elif percent>90:
+            return "almost all"
+        elif percent>75:
+            return "mostly"
+        elif percent>45:
+            return "lots of"
+        elif percent>30:
+            return "some"
+        elif percent>10:
+            return "a few"
+        elif percent>1:
+            return "very few"
+        else:
+            return ""
+
+    def describe_count_list(self, count_list, total):
+        description = ""
+        for count_item in count_list:
+            if count_item[1]/total>0.98:
+                description += "all " + str(count_item[0])
+            elif count_item[1]/total>0.90:
+                description += "almost all " + str(count_item[0])
+            elif count_item[1]/total>0.6:
+                description += "mostly " + str(count_item[0])
+            elif count_item[1]/total>0.3:
+                description += "some " + str(count_item[0])
+            
+        return description
+
+
+    def describe_summary(self):
+        print("describing summary...")
+        summary = ""
+        event_count = self.chord_count + self.note_count + self.rest_count
+        event_duration = self.chord_duration + self.note_duration + self.rest_duration
+
+        #lower weighting to number of items than to duration - ie 1 bar of semiquavers vs 8 bars of minims!
+        percent_dictionary = {}
+        percent_dictionary["chords"] =  ((self.chord_count/event_count*50) + (self.chord_duration/event_duration*150)) / 2
+        percent_dictionary["individual notes"] =  ((self.note_count/event_count*50) + (self.note_duration/event_duration*150)) / 2
+        percent_dictionary["rests"] =  ((self.rest_count/event_count*50) + (self.rest_duration/event_duration*150)) / 2
+        
+        for k,v in sorted(percent_dictionary.items(), key=lambda item: item[1], reverse=True):
+            if v>1:
+                summary+=self.describe_percentage(v) + " " + k
+                if k=="chords":
+                    describe_count = self.describe_count_list(self.count_chord_common_names, self.chord_count)
+                    if describe_count!="":
+                        describe_count+=", "
+                    describe_count += self.describe_count_list(self.count_rhythm_chord, self.chord_count)
+                    if describe_count!="":
+                        summary+=" (" + describe_count + ").  "
+
+                summary+=".  "  
+
+        return summary
+
     def describe_repetition(self):
         repetition = ""
         if len(self.measure_groups_list)>0:
@@ -454,7 +529,7 @@ class AnalysePart:
                 rhythm_repetition += ".  "
 
         for key, ms in self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary.items():
-            rhythm_repetition += "The rhythm in bar " + str(key) + " are used at "
+            rhythm_repetition += "The rhythm in bar " + str(key) + " is used at "
             for index, m in enumerate(ms):
                 if index==len(ms)-1 and index>0:
                     rhythm_repetition += " and "
@@ -635,7 +710,7 @@ class AnalysePart:
                         self.interval_dictionary[interval].append(event_index)
                     ai.interval_index = [interval, len(self.interval_dictionary.get(interval))-1]
                 
-                d = n.duration.quarterLength
+                d = n.duration.quarterLength #numeric value
                 if self.rhythm_note_dictionary.get(d) == None:
                     self.rhythm_note_dictionary[d] = [event_index]
                 else:
@@ -785,7 +860,8 @@ class AnalysePart:
         print (self.measure_intervals_analyse_indexes_dictionary)
         
         
-        #print (self.chord_common_name_dictionary)
+        print("\nchord common name diectionary...")
+        print (self.chord_common_name_dictionary)
  
         #make lists of index and totals then sort by totals for eg most common pitch / rhythm etc
         #lists
@@ -796,15 +872,29 @@ class AnalysePart:
         self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
         self.count_intervals = self.count_dictionary(self.interval_dictionary)
         self.count_chord_common_names = self.count_dictionary(self.chord_common_name_dictionary)
+        
         self.count_rhythm_note = self.count_dictionary(self.rhythm_note_dictionary)
         self.count_rhythm_rest = self.count_dictionary(self.rhythm_rest_dictionary)
         self.count_rhythm_chord = self.count_dictionary(self.rhythm_chord_dictionary)
+        print ("\ncount_rhythm_chord = ")
+        print(self.count_rhythm_chord)
+        self.rename_count_list_keys(self.count_rhythm_note, self._DURATION_MAP)
+        self.rename_count_list_keys(self.count_rhythm_rest, self._DURATION_MAP)
+        self.rename_count_list_keys(self.count_rhythm_chord, self._DURATION_MAP)
+        print ("\nand now count_rhythm_chord = ")
+        print(self.count_rhythm_chord)
+        
         #dictionaries with list indexes as keys
         self.count_chord_pitches = self.count_dictionary(self.chord_pitches_dictionary)
         self.count_chord_intervals = self.count_dictionary(self.chord_intervals_dictionary)
         
         #self.count_pitches = self.count_list(self.pitch_list)
 
+    def rename_count_list_keys(self, count_list, key_names):
+        for item in count_list:
+            if item[0] in key_names:
+                print ("replacing " + str(item[0]) + " with " + key_names.get(item[0]))
+                item[0] = key_names.get(item[0])
 
     def sort_count_list(self, e):
         return e[1]
