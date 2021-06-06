@@ -91,14 +91,20 @@ class MusicAnalyser:
 class AnalysePart:
 
     _DURATION_MAP = {
-        4.0: 'semibreve',
-        2.0: 'minim',
-        1.0: 'crotchet',
-        0.5: 'quaver',
-        0.25: 'semi-quaver',
-        0.125: 'demi-semi-quaver',
-        0.0625: 'hemi-demi-semi-quaver',
-        'zero': 'grace note',
+        4.0: 'semibreves',
+        3.0: 'dotted minims',
+        2.0: 'minims',
+        1.5: 'dotted crotchets',
+        1.0: 'crotchets',
+        0.75: 'dotted quavers',
+        0.5: 'quavers',
+        0.375: 'dotted semi-quavers',
+        0.25: 'semi-quavers',
+        0.1875: 'dotted demi-semi-quavers',
+        0.125: 'demi-semi-quavers',
+        0.09375: 'dotted hemi-demi-semi-quavers',
+        0.0625: 'hemi-demi-semi-quavers',
+        'zero': 'grace notes',
     }
     
     def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection, compare_type): 
@@ -420,6 +426,16 @@ class AnalysePart:
                     
                         skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
 
+    def describe_repetition_percentage(self, percent):
+        if percent>99:
+            return "all"
+        elif percent>85:
+            return "almost all"
+        elif percent>50:
+            return "over half"
+        else:
+            return ""
+
     def describe_percentage(self, percent):
         if percent>99:
             return "all"
@@ -440,16 +456,18 @@ class AnalysePart:
 
     def describe_count_list(self, count_list, total):
         description = ""
-        for count_item in count_list:
+        for index, count_item in enumerate(count_list):
             if count_item[1]/total>0.98:
-                description += "all " + str(count_item[0])
+                description += "all " + str(count_item[0]) + ", "
             elif count_item[1]/total>0.90:
-                description += "almost all " + str(count_item[0])
+                description += "almost all " + str(count_item[0]) + ", "
             elif count_item[1]/total>0.6:
-                description += "mostly " + str(count_item[0])
+                description += "mostly " + str(count_item[0]) + ", "
             elif count_item[1]/total>0.3:
-                description += "some " + str(count_item[0])
-            
+                description += "some " + str(count_item[0]) + ", "
+        
+        description = self.replace_end_with(description, ", ", "")
+        
         return description
 
 
@@ -474,28 +492,64 @@ class AnalysePart:
                         describe_count+=", "
                     describe_count += self.describe_count_list(self.count_rhythm_chord, self.chord_count)
                     if describe_count!="":
-                        summary+=" (" + describe_count + ").  "
+                        summary+=" (" + describe_count + ")"
+                elif k=="individual notes":
+                    describe_count = ""
+                    temp = self.describe_count_list(self.count_rhythm_note, self.note_count)
+                    if temp!="":
+                        describe_count += temp + ", "
 
-                summary+=".  "  
+                    temp = self.describe_count_list(self.count_pitch_names, self.note_count)
+                    if temp!="":
+                        describe_count += temp + ", "
 
+
+                    describe_count += self.describe_count_list(self.count_intervals, self.note_count)
+                    describe_count = self.replace_end_with(describe_count, ", ", "")
+        
+                    if describe_count!="":
+                        summary+=" (" + describe_count + ")"
+                elif k=="rests":
+                    describe_count = self.describe_count_list(self.count_rhythm_rest, self.rest_count)
+                    if describe_count!="":
+                        summary+=" (" + describe_count + ")"
+                summary+=", "  
+        summary = self.replace_end_with(summary, ", ", ".  ")
         return summary
+
+    def replace_end_with(self, original:str, remove:str, add:str):
+        to_return = original
+        if original.endswith(remove):
+            to_return = original[0:original.rfind(remove)]
+            to_return += add
+        return to_return
 
     def describe_repetition(self):
         repetition = ""
         if len(self.measure_groups_list)>0:
             for group in self.measure_groups_list:
-                if (group[0][1]-group[0][0]==1): # x and y or x to y.
-                    repetition+="Bars " + str(group[0][0]) + " and " + str(group[0][1])
+                group_repetition_percent = ((group[0][1]-group[0][0])*len(group)/len(self.measure_indexes))*100
+                if group_repetition_percent>50:
+                    if (group[0][1]-group[0][0]==1): # x and y or x to y.
+                        repetition+="Bars " + str(group[0][0]) + " and " + str(group[0][1])
+                    else:
+                        repetition+="Bars " + str(group[0][0]) + " to " + str(group[0][1])
+                    repetition += " are used "
+                    repetition += self.describe_repetition_percentage(group_repetition_percent)
+                    repetition += " of the way through.  "
                 else:
-                    repetition+="Bars " + str(group[0][0]) + " to " + str(group[0][1])
-                repetition+= " are used at "
-                for index, ms in enumerate(group[1:]):
-                    if index==len(group)-1 and index>0:
-                        repetition += " and "
-                    elif index<len(group)-1 and index>0:
-                        repetition += ", "  
-                    repetition+= str(ms[0])
-                repetition += ".  "
+                    if (group[0][1]-group[0][0]==1): # x and y or x to y.
+                        repetition+="Bars " + str(group[0][0]) + " and " + str(group[0][1])
+                    else:
+                        repetition+="Bars " + str(group[0][0]) + " to " + str(group[0][1])
+                    repetition+= " are used at "
+                    for index, ms in enumerate(group[1:]):
+                        if index==len(group)-2 and index>0:
+                            repetition += " and "
+                        elif index<len(group)-1 and index>0:
+                            repetition += ", "  
+                        repetition+= str(ms[0])
+                    repetition += ".  "
             
         for key, ms in self.repeated_measures_not_in_groups_dictionary.items():
             repetition += "Bar " + str(key) + " is used at "
@@ -539,7 +593,7 @@ class AnalysePart:
             rhythm_repetition += ".  "
         
         if rhythm_repetition=="":
-            rhythm_repetition = "There are no bars with the same rhythm...  "
+            rhythm_repetition = "There are no bars with just the same rhythm...  "
 
         repetition += rhythm_repetition
 
@@ -572,7 +626,7 @@ class AnalysePart:
             interval_repetition += ".  "
         
         if interval_repetition=="":
-            interval_repetition = "There are no bars with the same intervals...  "
+            interval_repetition = "There are no bars with just the same intervals...  "
 
         repetition += interval_repetition
 
@@ -870,19 +924,20 @@ class AnalysePart:
         print(self.count_pitches)
         #dictionaries
         self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
+        print (self.count_pitch_names)
         self.count_intervals = self.count_dictionary(self.interval_dictionary)
         self.count_chord_common_names = self.count_dictionary(self.chord_common_name_dictionary)
         
         self.count_rhythm_note = self.count_dictionary(self.rhythm_note_dictionary)
         self.count_rhythm_rest = self.count_dictionary(self.rhythm_rest_dictionary)
         self.count_rhythm_chord = self.count_dictionary(self.rhythm_chord_dictionary)
-        print ("\ncount_rhythm_chord = ")
-        print(self.count_rhythm_chord)
+        print ("\ncount_rhythm_note = ")
+        print(self.count_rhythm_note)
         self.rename_count_list_keys(self.count_rhythm_note, self._DURATION_MAP)
         self.rename_count_list_keys(self.count_rhythm_rest, self._DURATION_MAP)
         self.rename_count_list_keys(self.count_rhythm_chord, self._DURATION_MAP)
-        print ("\nand now count_rhythm_chord = ")
-        print(self.count_rhythm_chord)
+        print ("\nand now count_rhythm_note = ")
+        print(self.count_rhythm_note)
         
         #dictionaries with list indexes as keys
         self.count_chord_pitches = self.count_dictionary(self.chord_pitches_dictionary)
@@ -893,7 +948,6 @@ class AnalysePart:
     def rename_count_list_keys(self, count_list, key_names):
         for item in count_list:
             if item[0] in key_names:
-                print ("replacing " + str(item[0]) + " with " + key_names.get(item[0]))
                 item[0] = key_names.get(item[0])
 
     def sort_count_list(self, e):
