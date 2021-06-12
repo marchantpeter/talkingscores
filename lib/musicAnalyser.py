@@ -90,6 +90,13 @@ class MusicAnalyser:
 
 class AnalysePart:
 
+    _position_map = {
+        0: 'near the start',
+        1: 'before the middle',
+        2: 'after the middle',
+        3: 'near the end'
+    }
+
     _DURATION_MAP = {
         4.0: 'semibreves',
         3.0: 'dotted minims',
@@ -205,6 +212,7 @@ class AnalysePart:
         self.rhythm_note_dictionary = {}
         self.rhythm_rest_dictionary = {}
         self.rhythm_chord_dictionary = {}
+        self.count_accidentals_in_measures = {}
 
         self.chord_pitches_list = [] # each unique chord
         self.chord_pitches_dictionary = {} # index of each chord occurrence
@@ -228,6 +236,8 @@ class AnalysePart:
         self.rest_count = 0
         self.chord_duration = 0
         self.chord_count = 0
+        self.accidental_count = 0 # displayed accidentals ie not in the key signature
+        self.possible_accidental_count = 0 # each note - on its own or part of a chord
         
         self.part = None
 
@@ -436,6 +446,72 @@ class AnalysePart:
         else:
             return ""
 
+    #return a list with commas and an in the right place
+    #eg [1,4,6] = "1, 4 and 6"
+    def comma_and_list(self, l):
+        output = ""
+        for index, v in enumerate(l):
+            if index==len(l)-1 and index>0:
+                    output += " and "
+            elif index<len(l)-1 and index>0:
+                output += ", "  
+            output += str(v)
+        return output
+
+    def describe_distribution(self, count_in_measures, total):
+        distribution = ""
+
+        measure_percents = {}
+        for k, c in count_in_measures.items():
+            if c>0:
+                measure_percents[k] = (c/total)*100        
+        sorted_percent = dict(sorted(measure_percents.items(), reverse=True, key=lambda item: item[1]))
+        
+        ms=[]
+        to_pop = [] #can't pop during for loop
+        for m,p in sorted_percent.items():
+            if p>20:
+                ms.append(m)
+                to_pop.append(m)
+        percent_remaining = 100
+        for tp in to_pop:
+            percent_remaining -= measure_percents[tp]
+            measure_percents.pop(tp)
+
+        if len(ms)>0:
+            distribution += " mostly in bar"
+            if len(ms)>1:
+                distribution += "s"
+            distribution += " "
+            distribution += self.comma_and_list(ms)
+            
+        if len(measure_percents)>0:
+            if not distribution=="":
+                distribution += " and "
+            dist = {0:0, 1:0, 2:0, 3:0}
+            for index, mp in measure_percents.items():
+                if (index>len(count_in_measures)*0.75):
+                    dist[3]+=(mp/percent_remaining)*100
+                elif (index>len(count_in_measures)*0.5):
+                    dist[2]+=(mp/percent_remaining)*100
+                elif (index>len(count_in_measures)*0.25):
+                    dist[1]+=(mp/percent_remaining)*100
+                else:
+                    dist[0]+=(mp/percent_remaining)*100
+            sorted_dist = sorted(dist.items(), reverse=True, key=lambda item: item[1])
+            positions = " "
+            if sorted_dist[0][1]>50:
+                positions += self._position_map[sorted_dist[0][0]]
+            elif sorted_dist[0][1] + sorted_dist[1][1]>70:
+                positions += self._position_map[sorted_dist[0][0]] + " and " + self._position_map[sorted_dist[1][0]]
+            else:
+                positions += str(len(measure_percents)) + " bars throughout"
+            
+            distribution += positions + "."
+
+        return distribution
+
+    #eg notes or chords as a percentage of events
     def describe_percentage(self, percent):
         if percent>99:
             return "all"
@@ -453,6 +529,19 @@ class AnalysePart:
             return "very few"
         else:
             return ""
+
+    #an event that is uncommon - like accidentals - so the descriptions weighted differently
+    def describe_percentage_uncommon(self, percent):
+        if percent>5:
+            return "many"
+        elif percent>2:
+            return "a lot of"
+        elif percent>1:
+            return "quite a few"
+        elif percent>0.5:
+            return "a few"
+        else:
+            return "some"
 
     def describe_count_list(self, count_list, total):
         description = ""
@@ -514,6 +603,13 @@ class AnalysePart:
                     if describe_count!="":
                         summary+=" (" + describe_count + ")"
                 summary+=", "  
+        
+        #describe the number of accidentals and where they mostly occur
+        if self.accidental_count>1:
+            accidental_percent = (self.accidental_count/self.possible_accidental_count)*100
+            summary+=self.describe_percentage_uncommon(accidental_percent) + " accidentals."
+            summary+=self.describe_distribution(self.count_accidentals_in_measures, self.accidental_count)
+
         summary = self.replace_end_with(summary, ", ", ".  ")
         return summary
 
@@ -644,12 +740,15 @@ class AnalysePart:
         last_note_pitch = -1
         current_measure=-1
         measure_analyse_indexes = AnalyseSection()
+        measure_accidentals = 0
         for n in self.part.flat.notesAndRests:
             if (n.measureNumber>current_measure):
                 self.measure_indexes[n.measureNumber] = event_index
                 current_measure = n.measureNumber
                 if (len(measure_analyse_indexes.analyse_indexes)>0): #first time through will be empty
-                    #measure_analyse_indexes.print_info()
+                    self.count_accidentals_in_measures[current_measure-1] = measure_accidentals
+                    measure_accidentals = 0
+
                     index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
                     if index == -1:
                         self.measure_analyse_indexes_list.append(measure_analyse_indexes)
@@ -741,10 +840,24 @@ class AnalysePart:
                     self.chord_common_name_dictionary[common_name].append(event_index)
                 ai.chord_name_index = [common_name, len(self.chord_common_name_dictionary.get(common_name))-1]
                 
+                #count accidentals in the chord
+                for p in n.pitches:
+                    if p.accidental is not None and p.accidental.displayStatus == True:
+                        measure_accidentals += 1
+                        self.accidental_count += 1
+                        print("chord accidental displayed")
+                self.possible_accidental_count += len(n.pitches)
+
                 self.chord_duration += d
                 self.chord_count += 1
             elif n.isChord == False:
                 ai.event_type = 'n'
+                
+                if n.pitch.accidental is not None and n.pitch.accidental.displayStatus == True:
+                    measure_accidentals += 1
+                    self.accidental_count += 1
+                    print("it has an accidental " + str(n.pitch) + " and display = " + str(n.pitch.accidental.displayStatus))
+                self.possible_accidental_count += 1
                 
                 self.pitches[n.pitch.midi] += 1
                 self.pitch_list[n.pitch.midi].append(event_index)
@@ -790,6 +903,8 @@ class AnalysePart:
 
         #add last measure
         if (len(measure_analyse_indexes.analyse_indexes)>0):
+            self.count_accidentals_in_measures[current_measure-1] = measure_accidentals
+            
             index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
             print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) + " and current measure = " + str(current_measure) )
             if index == -1:
@@ -922,6 +1037,13 @@ class AnalysePart:
         self.count_pitches = self.count_list(self.pitch_list)
         print("\nPitches count...")
         print(self.count_pitches)
+        
+        print("\nAccidentals in measures count")
+        print(self.count_accidentals_in_measures)
+        print("Possible accidentals = " + str(self.possible_accidental_count))
+        print("accidentals count = " + str(self.accidental_count) + "\n") 
+
+        print(self.count_accidentals_in_measures)
         #dictionaries
         self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
         print (self.count_pitch_names)
