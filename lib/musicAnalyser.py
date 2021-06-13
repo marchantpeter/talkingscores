@@ -97,6 +97,34 @@ class AnalysePart:
         3: 'near the end'
     }
 
+    _interval_map = {
+        0: 'unison',
+        1: 'minor 2nd',
+        2: 'major 2nd',
+        3: 'minor 3rd',
+        4: 'major 3rd',
+        5: 'perfect 4th',
+        6: 'augmented 4th / tritone',
+        7: 'perfect 5th',
+        8: 'minor 6th',
+        9: 'major 6th',
+        10: 'minor 7th',
+        11: 'major 7th',
+        12: 'octave',
+        13: 'minor 9th',
+        14: 'major 9th',
+        15: 'minor 10th',
+        16: 'major 10th',
+        17: 'perfect 11th',
+        18: 'augmented 11th',
+        19: 'perfect 12th',
+        20: 'minor 13th',
+        21: 'major 13th',
+        22: 'minor 14th',
+        23: 'major 14th',
+        24: '2 octaves',
+    }
+
     _DURATION_MAP = {
         4.0: 'semibreves',
         3.0: 'dotted minims',
@@ -223,6 +251,7 @@ class AnalysePart:
         self.count_pitches = []
         self.count_pitch_names = []
         self.count_intervals = []
+        self.count_intervals_abs = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] #ignore ascending or descending
         self.count_chord_pitches = []
         self.count_chord_intervals = []
         self.count_chord_common_names = []
@@ -233,6 +262,10 @@ class AnalysePart:
 
         self.note_duration = 0
         self.note_count = 0
+        self.interval_count = 0
+        self.interval_ascending_count = 0
+        self.interval_descending_count = 0
+        self.interval_unison_count = 0
         self.rest_duration = 0
         self.rest_count = 0
         self.chord_duration = 0
@@ -544,6 +577,7 @@ class AnalysePart:
         else:
             return "some"
 
+    
     def describe_count_list(self, count_list, total):
         description = ""
         for index, count_item in enumerate(count_list):
@@ -558,6 +592,29 @@ class AnalysePart:
         
         description = self.replace_end_with(description, ", ", "")
         
+        return description
+
+    #if nothing is over 30% for describe_count_list - then 
+    def describe_count_list_several(self, count_list, total, item_name):
+        description = ""
+        upto_percent = []
+        remaining_count = 0
+        progress_percent = 0
+        for index, count_item in enumerate(count_list):
+            if progress_percent<40:
+                upto_percent.append(count_item[0])
+                progress_percent += (count_item[1]/total)*100
+            else:
+                if count_item[1]>0:
+                    remaining_count += 1
+        
+        if len(upto_percent)<=4:
+            description="mostly " + self.comma_and_list(upto_percent)
+            if remaining_count>1:
+                description+="; plus " + str(remaining_count) + " other " + item_name
+        else:
+            description = str(len(upto_percent)) + " " + item_name
+            description += ", the most common is " + enumerate(count_list)[0][0]
         return description
 
 
@@ -600,11 +657,23 @@ class AnalysePart:
                     if temp!="":
                         describe_count += temp + ", "
 
-                    describe_count += self.describe_count_list(self.count_intervals, self.note_count)
-                    describe_count = self.replace_end_with(describe_count, ", ", "")
-        
-                    if describe_count!="":
-                        summary+=" (" + describe_count + ")"
+                    sorted_abs_intervals  = dict(sorted(enumerate(self.count_intervals_abs), reverse=True, key=lambda item: item[1]))
+                    named_abs_intervals = {}
+                    for index, count in sorted_abs_intervals.items():
+                        named_abs_intervals[self._interval_map[index]] = count
+                    temp = self.describe_count_list(named_abs_intervals.items(), self.interval_count)
+                    temp = self.replace_end_with(temp, ", ", "")
+                    if temp=="":
+                        temp = self.describe_count_list_several(named_abs_intervals.items(), self.interval_count, "intervals")
+    
+                    #mostly ascending or descending
+                    if self.interval_ascending_count>self.interval_descending_count*2:
+                        temp += ", mostly ascending"
+                    elif self.interval_descending_count>self.interval_ascending_count*2:
+                        temp += ", mostly descending"
+
+                    if temp!="":
+                        summary += " (" + temp + ")"
                 elif k=="rests":
                     describe_count = self.describe_count_list(self.count_rhythm_rest, self.rest_count)
                     if describe_count!="":
@@ -887,7 +956,19 @@ class AnalysePart:
                     else:
                         self.interval_dictionary[interval].append(event_index)
                     ai.interval_index = [interval, len(self.interval_dictionary.get(interval))-1]
-                
+
+                    if interval>0:
+                        self.interval_ascending_count += 1
+                    elif interval<0:
+                        self.interval_descending_count += 1
+                    else:
+                        self.interval_unison_count += 1
+                    self.interval_count += 1
+
+                    interval_abs = abs(interval)
+                    if interval_abs<24:
+                        self.count_intervals_abs[interval_abs] += 1
+
                 d = n.duration.quarterLength #numeric value
                 if self.rhythm_note_dictionary.get(d) == None:
                     self.rhythm_note_dictionary[d] = [event_index]
