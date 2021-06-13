@@ -226,6 +226,7 @@ class AnalysePart:
         self.count_chord_pitches = []
         self.count_chord_intervals = []
         self.count_chord_common_names = []
+        self.count_notes_in_chords = {2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0, 10:0}
         self.count_rhythm_note = []
         self.count_rhythm_rest = []
         self.count_rhythm_chord = []
@@ -579,8 +580,15 @@ class AnalysePart:
                     describe_count = self.describe_count_list(self.count_chord_common_names, self.chord_count)
                     if describe_count!="":
                         describe_count+=", "
-                    describe_count += self.describe_count_list(self.count_rhythm_chord, self.chord_count)
+                    chord_count = self.describe_count_list(self.count_rhythm_chord, self.chord_count)
+                    if chord_count!="":
+                        describe_count += chord_count + ", "
+                    count_notes_in_chords_list = sorted_dist = sorted(self.count_notes_in_chords.items(), reverse=True, key=lambda item: item[1])
+                    note_count = self.describe_count_list(count_notes_in_chords_list, self.chord_count)
+                    if note_count!="":
+                        describe_count += note_count + " notes, "
                     if describe_count!="":
+                        describe_count = self.replace_end_with(describe_count, ", ", "")
                         summary+=" (" + describe_count + ")"
                 elif k=="individual notes":
                     describe_count = ""
@@ -591,7 +599,6 @@ class AnalysePart:
                     temp = self.describe_count_list(self.count_pitch_names, self.note_count)
                     if temp!="":
                         describe_count += temp + ", "
-
 
                     describe_count += self.describe_count_list(self.count_intervals, self.note_count)
                     describe_count = self.replace_end_with(describe_count, ", ", "")
@@ -810,6 +817,9 @@ class AnalysePart:
                     self.rhythm_chord_dictionary[d].append(event_index)
                 ai.rhythm_chord_index = [d, len(self.rhythm_chord_dictionary.get(d))-1]
                 
+                if len(n.pitches)<11: #unlikely as not enough fingers - but best to check!
+                    self.count_notes_in_chords[len(n.pitches)] += 1
+
                 index = self.find_chord(n)
                 if index == -1:
                     self.chord_pitches_list.append(sorted(p.midi for p in n.pitches))
