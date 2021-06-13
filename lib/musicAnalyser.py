@@ -507,9 +507,9 @@ class AnalysePart:
             else:
                 positions += str(len(measure_percents)) + " bars throughout"
             
-            distribution += positions + "."
+            distribution += positions
 
-        return distribution
+        return distribution.strip()
 
     #eg notes or chords as a percentage of events
     def describe_percentage(self, percent):
@@ -607,9 +607,10 @@ class AnalysePart:
         #describe the number of accidentals and where they mostly occur
         if self.accidental_count>1:
             accidental_percent = (self.accidental_count/self.possible_accidental_count)*100
-            summary+=self.describe_percentage_uncommon(accidental_percent) + " accidentals."
-            summary+=self.describe_distribution(self.count_accidentals_in_measures, self.accidental_count)
-
+            summary+=self.describe_percentage_uncommon(accidental_percent) + " accidentals"
+            dist = self.describe_distribution(self.count_accidentals_in_measures, self.accidental_count)
+            if not dist == "":
+                summary += " (" + dist + ")."
         summary = self.replace_end_with(summary, ", ", ".  ")
         return summary
 
