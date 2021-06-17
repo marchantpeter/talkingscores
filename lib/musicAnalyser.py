@@ -92,8 +92,8 @@ class AnalysePart:
 
     _position_map = {
         0: 'near the start',
-        1: 'before the middle',
-        2: 'after the middle',
+        1: 'in the 2nd quarter',
+        2: 'in the 3rd quarter',
         3: 'near the end'
     }
 
@@ -139,7 +139,7 @@ class AnalysePart:
         0.125: 'demi-semi-quavers',
         0.09375: 'dotted hemi-demi-semi-quavers',
         0.0625: 'hemi-demi-semi-quavers',
-        'zero': 'grace notes',
+        0.0: 'grace notes',
     }
     
     def compare_sections(self, s1:AnalyseSection, s2:AnalyseSection, compare_type): 
@@ -241,6 +241,7 @@ class AnalysePart:
         self.rhythm_rest_dictionary = {}
         self.rhythm_chord_dictionary = {}
         self.count_accidentals_in_measures = {}
+        self.count_gracenotes_in_measures = {}
 
         self.chord_pitches_list = [] # each unique chord
         self.chord_pitches_dictionary = {} # index of each chord occurrence
@@ -271,6 +272,7 @@ class AnalysePart:
         self.chord_duration = 0
         self.chord_count = 0
         self.accidental_count = 0 # displayed accidentals ie not in the key signature
+        self.gracenote_count = 0
         self.possible_accidental_count = 0 # each note - on its own or part of a chord
         
         self.part = None
@@ -539,7 +541,7 @@ class AnalysePart:
             elif sorted_dist[0][1] + sorted_dist[1][1]>70:
                 positions += self._position_map[sorted_dist[0][0]] + " and " + self._position_map[sorted_dist[1][0]]
             else:
-                positions += str(len(measure_percents)) + " bars throughout"
+                positions += "in " + str(len(measure_percents)) + " bars throughout"
             
             distribution += positions
 
@@ -680,13 +682,24 @@ class AnalysePart:
                         summary+=" (" + describe_count + ")"
                 summary+=", "  
         
+        dist = ""
         #describe the number of accidentals and where they mostly occur
         if self.accidental_count>1:
             accidental_percent = (self.accidental_count/self.possible_accidental_count)*100
             summary+=self.describe_percentage_uncommon(accidental_percent) + " accidentals"
-            dist = self.describe_distribution(self.count_accidentals_in_measures, self.accidental_count)
+            dist = (self.describe_distribution(self.count_accidentals_in_measures, self.accidental_count))
+            if not dist == "":
+                summary += " (" + dist + "), "
+        
+        #describe the number of grace notes and where they mostly occur
+        print ("grace note count = " + str(self.gracenote_count) + " possible = " + str(self.possible_accidental_count))
+        if self.gracenote_count>1:
+            gracenote_percent = (self.gracenote_count/self.possible_accidental_count)*100
+            summary+=self.describe_percentage_uncommon(gracenote_percent) + " grace notes"
+            dist = (self.describe_distribution(self.count_gracenotes_in_measures, self.accidental_count))
             if not dist == "":
                 summary += " (" + dist + ")."
+        
         summary = self.replace_end_with(summary, ", ", ".  ")
         return summary
 
@@ -818,6 +831,7 @@ class AnalysePart:
         current_measure=-1
         measure_analyse_indexes = AnalyseSection()
         measure_accidentals = 0
+        measure_gracenotes = 0
         for n in self.part.flat.notesAndRests:
             if (n.measureNumber>current_measure):
                 self.measure_indexes[n.measureNumber] = event_index
@@ -825,6 +839,9 @@ class AnalysePart:
                 if (len(measure_analyse_indexes.analyse_indexes)>0): #first time through will be empty
                     self.count_accidentals_in_measures[current_measure-1] = measure_accidentals
                     measure_accidentals = 0
+                    self.count_gracenotes_in_measures[current_measure-1] = measure_gracenotes
+                    measure_gracenotes = 0
+                    
 
                     index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
                     if index == -1:
@@ -880,12 +897,17 @@ class AnalysePart:
                 ai.event_type = 'c'
                 
                 d = n.duration.quarterLength
-                if self.rhythm_chord_dictionary.get(d) == None:
-                    self.rhythm_chord_dictionary[d] = [event_index]
-                else:
-                    self.rhythm_chord_dictionary[d].append(event_index)
-                ai.rhythm_chord_index = [d, len(self.rhythm_chord_dictionary.get(d))-1]
-                
+                if d==0.0:
+                    measure_gracenotes += len(n.pitches)
+                    self.gracenote_count += len(n.pitches)
+
+                if d>0.0: #bigger than a grace note because they are counted separately
+                    if self.rhythm_chord_dictionary.get(d) == None:
+                        self.rhythm_chord_dictionary[d] = [event_index]
+                    else:
+                        self.rhythm_chord_dictionary[d].append(event_index)
+                    ai.rhythm_chord_index = [d, len(self.rhythm_chord_dictionary.get(d))-1]
+                    
                 if len(n.pitches)<11: #unlikely as not enough fingers - but best to check!
                     self.count_notes_in_chords[len(n.pitches)] += 1
 
@@ -970,12 +992,16 @@ class AnalysePart:
                         self.count_intervals_abs[interval_abs] += 1
 
                 d = n.duration.quarterLength #numeric value
-                if self.rhythm_note_dictionary.get(d) == None:
-                    self.rhythm_note_dictionary[d] = [event_index]
-                else:
-                    self.rhythm_note_dictionary[d].append(event_index)
-                ai.rhythm_note_index = [d, len(self.rhythm_note_dictionary.get(d))-1]
-                
+                if d==0.0:
+                    measure_gracenotes += 1
+                    self.gracenote_count += 1
+                if d>0.0: #bigger than a grace note because they are counted separately
+                    if self.rhythm_note_dictionary.get(d) == None:
+                        self.rhythm_note_dictionary[d] = [event_index]
+                    else:
+                        self.rhythm_note_dictionary[d].append(event_index)
+                    ai.rhythm_note_index = [d, len(self.rhythm_note_dictionary.get(d))-1]
+                    
                 last_note_pitch = n.pitch.midi
                 self.note_duration += d
                 self.note_count += 1
@@ -996,6 +1022,7 @@ class AnalysePart:
         #add last measure
         if (len(measure_analyse_indexes.analyse_indexes)>0):
             self.count_accidentals_in_measures[current_measure-1] = measure_accidentals
+            self.count_gracenotes_in_measures[current_measure-1] = measure_gracenotes
             
             index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
             print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) + " and current measure = " + str(current_measure) )
@@ -1132,15 +1159,17 @@ class AnalysePart:
         
         print("\nAccidentals in measures count")
         print(self.count_accidentals_in_measures)
+        print("\nGrace notes in measures count")
+        print(self.count_gracenotes_in_measures)
         print("Possible accidentals = " + str(self.possible_accidental_count))
         print("accidentals count = " + str(self.accidental_count) + "\n") 
 
-        print(self.count_accidentals_in_measures)
         #dictionaries
         self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
         print (self.count_pitch_names)
         self.count_intervals = self.count_dictionary(self.interval_dictionary)
         self.count_chord_common_names = self.count_dictionary(self.chord_common_name_dictionary)
+        
         
         self.count_rhythm_note = self.count_dictionary(self.rhythm_note_dictionary)
         self.count_rhythm_rest = self.count_dictionary(self.rhythm_rest_dictionary)
