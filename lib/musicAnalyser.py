@@ -242,6 +242,7 @@ class AnalysePart:
         self.rhythm_chord_dictionary = {}
         self.count_accidentals_in_measures = {}
         self.count_gracenotes_in_measures = {}
+        self.count_rests_in_measures = {}
 
         self.chord_pitches_list = [] # each unique chord
         self.chord_pitches_dictionary = {} # index of each chord occurrence
@@ -477,8 +478,12 @@ class AnalysePart:
             return "all"
         elif percent>85:
             return "almost all"
+        elif percent>75:
+            return "over three quarters"
         elif percent>50:
             return "over half"
+        elif percent>33:
+            return "over a thrid"
         else:
             return ""
 
@@ -675,11 +680,14 @@ class AnalysePart:
                         temp += ", mostly descending"
 
                     if temp!="":
-                        summary += " (" + temp + ")"
+                        describe_count += temp
+
+                    summary += " (" + describe_count + ")"
                 elif k=="rests":
                     describe_count = self.describe_count_list(self.count_rhythm_rest, self.rest_count)
+                    dist = (self.describe_distribution(self.count_rests_in_measures, self.rest_count))
                     if describe_count!="":
-                        summary+=" (" + describe_count + ")"
+                        summary+=" (" + describe_count + " - " + dist + ")"
                 summary+=", "  
         
         dist = ""
@@ -714,7 +722,7 @@ class AnalysePart:
         repetition = ""
         if len(self.measure_groups_list)>0:
             for group in self.measure_groups_list:
-                group_repetition_percent = ((group[0][1]-group[0][0])*len(group)/len(self.measure_indexes))*100
+                group_repetition_percent = ((group[0][1]-group[0][0]+1)*len(group)/len(self.measure_indexes))*100
                 if group_repetition_percent>50:
                     if (group[0][1]-group[0][0]==1): # x and y or x to y.
                         repetition+="Bars " + str(group[0][0]) + " and " + str(group[0][1])
@@ -832,6 +840,7 @@ class AnalysePart:
         measure_analyse_indexes = AnalyseSection()
         measure_accidentals = 0
         measure_gracenotes = 0
+        measure_rests = 0
         for n in self.part.flat.notesAndRests:
             if (n.measureNumber>current_measure):
                 self.measure_indexes[n.measureNumber] = event_index
@@ -841,6 +850,8 @@ class AnalysePart:
                     measure_accidentals = 0
                     self.count_gracenotes_in_measures[current_measure-1] = measure_gracenotes
                     measure_gracenotes = 0
+                    self.count_rests_in_measures[current_measure-1] = measure_rests
+                    measure_rests = 0
                     
 
                     index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
@@ -882,7 +893,7 @@ class AnalysePart:
             ai = AnalyseIndex(event_index)
             if n.isRest:
                 ai.event_type = 'r'
-                
+                measure_rests += 1
                 d = n.duration.quarterLength
                 if self.rhythm_rest_dictionary.get(d) == None:
                     self.rhythm_rest_dictionary[d] = [event_index]
@@ -1023,6 +1034,7 @@ class AnalysePart:
         if (len(measure_analyse_indexes.analyse_indexes)>0):
             self.count_accidentals_in_measures[current_measure-1] = measure_accidentals
             self.count_gracenotes_in_measures[current_measure-1] = measure_gracenotes
+            self.count_rests_in_measures[current_measure-1] = measure_rests
             
             index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
             print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) + " and current measure = " + str(current_measure) )
