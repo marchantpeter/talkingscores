@@ -8,11 +8,25 @@ from music21 import *
 
 logger = logging.getLogger("TSScore")
 
-class AnalyseIndex:
+"""
+This code attempts to identify common elements in the music, along with their distribution and look for patterns or repetition.
+The basic idea is to make a separate index (or bucket) of each musical attribute we want to consider eg pitch / rhythm / interval / chord name etc.  
 
+To do this - we give some musical attributes a Dictionary - eg for pitch, the key is eg the midi pitch and the value is a List of all the indexes of those events in the Part.  
+Other musical attributes use a List to store what they are - because they are not a suitable datatype for a Dictionary key - eg the pitches in a chord; where each element is a List of pitches.  Then, similar to before, we use a dictionary but the key is the index in that List and again the value is a List of all the indexes of those events in the Part.
+
+We then have an AnalyseIndex class which combines the indexes of all the musical attributes for each event.
+There is a List of AnalyseIndex instances where each one corresponds to eg a note / chord / rest etc in the Part.  And this stores the index of the type of musical attribute eg the A4 notes when looking at pitch, along with the index of this particular event from the dictionary of all the A4 notes.
+From this we can take any event and discern when the previous / next matching event occurs from any of its musical attributes.  
+
+A similar technique is applied to Measures to create indexes (or buckets) of Measures and then groups of Measures.  
+
+"""
+
+class AnalyseIndex:
     def __init__(self, ei):
         self.event_index = ei
-        self.event_type = '' # n c r
+        self.event_type = '' # n c r - note / chord / rest
 
         #[the particular eg chord_interval_index, the occurance of that particular event in eg AnalysePart.chord_pitches_dictionary]
         self.chord_interval_index = [-1, -1] 
@@ -21,7 +35,7 @@ class AnalyseIndex:
         
         self.pitch_number_index = [-1, -1]
         self.pitch_name_index = ['', -1]
-        self.interval_index = [-1, -1]
+        self.interval_index = [None, -1]
         #possibly only needs one rhythm index
         self.rhythm_note_index = [-1, -1]
         self.rhythm_chord_index = [-1, -1]
@@ -42,7 +56,7 @@ class AnalyseIndex:
 class AnalyseSection:
     def __init__(self):
         self.analyse_indexes = [] # all the notes etc in the section
-        self.section_start_event_indexes = [] # the event indexes where this section occurs
+        self.section_start_event_indexes = [] # the event indexes each time this section starts
         
     def print_info(self):
         print("section length = " + str(len(self.analyse_indexes)))
@@ -56,27 +70,14 @@ class MusicAnalyser:
     repetition_right_hand = ""
     repetition_left_hand = ""
 
-    def __init__(self):
-        print("hello - I'm a MusicAnalyser...")
-
     def setScore(self, sc):
-        if not self.score == None: # it still gets called twice - I don't know why!
-            print ("score already added...")
-            return
-        
         self.score = sc
         part_index = 0
         self.analyse_parts = []
         for p in self.score.parts:
-            #print (p.flat.notes.secondsMap)
             self.analyse_parts.append(AnalysePart())
-            self.analyse_parts[part_index].setPart(p)
+            self.analyse_parts[part_index].set_part(p)
             part_index = part_index + 1
-        
-        print("\n ### \n")
-        print("added all the parts")
-        for ap in self.analyse_parts:
-            print ("len interval dictionary = " + str(len(ap.interval_dictionary)))
         
         self.repetition_left_hand = self.analyse_parts[1].describe_repetition()
         self.repetition_right_hand = self.analyse_parts[0].describe_repetition()
@@ -85,11 +86,9 @@ class MusicAnalyser:
         self.summary_right_hand = self.analyse_parts[0].describe_summary()
 
 
-    def count_pitches(self):
-        print("counting pitches")
-
 class AnalysePart:
 
+    #position based on quarters of the Score
     _position_map = {
         0: 'near the start',
         1: 'in the 2nd quarter',
@@ -159,7 +158,7 @@ class AnalysePart:
                     break
         return to_return
 
-    #one might have a chord or play a note in octaves - and this will say the intervals don't match - even if they kind of do...
+    #one might have a chord or play a note in octaves - and this will say the intervals don't match - because it is expecting single notes...
     def compare_indexes_intervals(self, ai1:AnalyseIndex, ai2:AnalyseIndex):
         to_return = True
         if not (ai1.event_type==ai2.event_type):
@@ -186,7 +185,7 @@ class AnalysePart:
 
         return to_return
         
-
+    #Check for the same event type then compare the important attributes of that particular event type
     def compare_indexes(self, ai1:AnalyseIndex, ai2:AnalyseIndex):
         to_return = True
         if not (ai1.event_type==ai2.event_type):
@@ -207,70 +206,74 @@ class AnalysePart:
         return to_return
 
     def __init__(self):
-        print("hello - I'm an AnalysePart...")
-        self.analyse_indexes = []
-        self.analyse_indexes_list = []
-        self.analyse_indexes_dictionary = {}
-        self.measure_indexes = {} # a dictionary instead of a list because there might be a pickup bar
+        self.analyse_indexes_list = [] # a list of AnalyseIndex - each unique event}
+        self.analyse_indexes_dictionary = {} # {index of event, [List of event indexes]
+        self.analyse_indexes_all = {} # {event index, [index from analyse_indexes_list, index from analyse_indexes_dictionary]}
         
-        self.measure_analyse_indexes_list = [] # each element is a list of AnalyseIndex
-        self.measure_analyse_indexes_dictionary = {} # index of each measure occurrence
-        self.measure_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
-        self.measure_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
-        self.repeated_measures_not_in_groups_dictionary = {} # measure index, list of repetition
+        self.measure_indexes = {} # the event index (from the Part) of the first event of each meausre.  A dictionary instead of a list because there might be a pickup bar
+        
+        self.measure_analyse_indexes_list = [] # each element represents a unique measure as an AnalyseSection - which includes a list of AnalyseIndexes 
+        self.measure_analyse_indexes_dictionary = {} # {index in measure_analyse_indexes_list, [list of measure indexes]}
+        self.measure_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list {meausre_index, [index from measure_analyse_indexes_list, index from measure_analyse_indexes_dictionary]}
+        self.repeated_measures_lists = [] # List of lists of measure indexes where measures match [[1, 3, 6], [2, 4]]
+        self.measure_groups_list = [] #groups of repeated measures [ [[1st group 1st occurance start bar, 1st group 1st occurance last bar], [1st group 2nd occurance start bar, 1st group 2nd occurance last bar]], [[2nd group 1st occurance start bar, 2nd group 1st occurance last bar], [2nd group 2nd occurance start bar, 2nd group 2nd occurance last bar]] ] eg [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
+        self.repeated_measures_not_in_groups_dictionary = {} # repeated measures that aren't in a group.  measure index, list of measures it is repeated at
 
-        self.measure_rhythm_analyse_indexes_list = [] # each element is a list of AnalyseIndex
-        self.measure_rhythm_analyse_indexes_dictionary = {} # index of each measure occurrence
-        self.measure_rhythm_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
-        self.measure_rhythm_not_full_match_all = [] # [[1, 3, 6], [2, 4]]
-        self.measure_rhythm_not_full_match_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
-        self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of repetition
+        self.measure_rhythm_analyse_indexes_list = [] # each element is an AnalyseSection for a unique measure (containing a list of AnalyseIndex) - but ignoring pitch and intervals etc
+        self.measure_rhythm_analyse_indexes_dictionary = {} # index of each measure occurrence with particular rhythm
+        self.measure_rhythm_analyse_indexes_all = {} # the index of every measure within measure_rhythm_analyse_indexes_list
+        self.repeated_measures_lists_rhythm = [] # where the rhythm matches - but the measure isn't already a full match. [[1, 3, 6], [2, 4]]
+        self.measure_rhythm_not_full_match_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ] ie measures 1 to 4 are used at 9 to 12 and 7 to 8 are used at 15 to 16.
+        self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of measures it is repeated at
         
-        self.measure_intervals_analyse_indexes_list = [] # each element is a list of AnalyseIndex
-        self.measure_intervals_analyse_indexes_dictionary = {} # index of each measure occurrence
-        self.measure_intervals_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list
-        self.measure_intervals_not_full_match_all = []
+        self.measure_intervals_analyse_indexes_list = [] # each element is an AnalyseSection for a unique measure (containing a list of AnalyseIndex) - but ignoring rhythm etc
+        self.measure_intervals_analyse_indexes_dictionary = {} # index of each measure occurrence with particular intervals
+        self.measure_intervals_analyse_indexes_all = {} # the index of every measure within measure_intervals_analyse_indexes_list
+        self.repeated_measures_lists_intervals = [] # where the intervals match - but the measure isn't already a full match. [[1, 3, 6], [2, 4]]
         self.measure_intervals_not_full_match_groups_list = [] # [ [[1, 4], [9, 12]], [[7, 8], [15, 16]] ]
-        self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of repetition
+        self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary = {} # measure index, list of measures it is repeated at
         
-        self.pitches = [0] * 128
-        self.pitch_list = []
-        self.pitch_name_dictionary = {}
-        self.interval_dictionary = {}
-        self.rhythm_note_dictionary = {}
-        self.rhythm_rest_dictionary = {}
-        self.rhythm_chord_dictionary = {}
-        self.count_accidentals_in_measures = {}
-        self.count_gracenotes_in_measures = {}
-        self.count_rests_in_measures = {}
+        self.pitch_number_dictionary = {} # midi pitch number, list of event indexes
+        for i in range(128):
+            self.pitch_number_dictionary[i] = []
+        self.pitch_name_dictionary = {} # pitch name (without octave), [event indexes]
+        self.interval_dictionary = {} # interval (in semitones +x / -x / 0), [event indexes]
+        self.rhythm_note_dictionary = {} # duration (in fractions of quarter notes) of single notes, [event indexes]
+        self.rhythm_rest_dictionary = {} # duration (in fractions of quarter notes) of rests, [event indexes]
+        self.rhythm_chord_dictionary = {} # duration (in fractions of quarter notes) of chords, [event indexes]
+        
+        self.count_accidentals_in_measures = {} # {measure number, number of accidentals in it}
+        self.count_gracenotes_in_measures = {} # {measure number, number of accidentals in it}
+        self.count_rests_in_measures = {} # {measure number, number of accidentals in it}
 
-        self.chord_pitches_list = [] # each unique chord
-        self.chord_pitches_dictionary = {} # index of each chord occurrence
-        self.chord_intervals_list = []
-        self.chord_intervals_dictionary = {}
-        self.chord_common_name_dictionary = {}
+        self.chord_pitches_list = [] # each unique chord based on pitches (midi number)
+        self.chord_pitches_dictionary = {} # index in chord_pitches_list, [event indexes]
+        self.chord_intervals_list = [] # each unique chord based on the intervals in it
+        self.chord_intervals_dictionary = {} # index in chord_intervals_list, [event indexes]
+        self.chord_common_name_dictionary = {} #chord name, [event indexes]
 
-        self.count_pitches = []
-        self.count_pitch_names = []
-        self.count_intervals = []
-        self.count_intervals_abs = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] #ignore ascending or descending
-        self.count_chord_pitches = []
-        self.count_chord_intervals = []
-        self.count_chord_common_names = []
-        self.count_notes_in_chords = {2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0, 10:0}
-        self.count_rhythm_note = []
-        self.count_rhythm_rest = []
-        self.count_rhythm_chord = []
+        self.count_pitches = [] # [[pitch number, count]] ordered by descending count. produced by count_dictionary()
+        self.count_pitch_names = [] # [[pitch name, count]] ordered by descending count. produced by count_dictionary()
+        self.count_intervals = [] # [[interval +x / -x / 0, count]] ordered by descending count. produced by count_dictionary()
+        self.count_intervals_abs = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] #count of intervals (unison to 2 octaves) - ignore ascending or descending
+        self.count_chord_pitches = [] # [[key from chord_pitches_dictionary, count]] ordered by descending count. produced by count_dictionary()
+        self.count_chord_intervals = [] # [[key from chord_intervals_dictionary, count]] ordered by descending count. produced by count_dictionary()
+        self.count_chord_common_names = [] # [[chord common name, count]] ordered by descending count. produced by count_dictionary()
+        self.count_notes_in_chords = {2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0, 10:0} # {number of notes in chord, number of occurances}
+        self.count_rhythm_note = [] # [[duration of individual note, count]] ordered by descending count. produced by count_dictionary()
+        self.count_rhythm_rest = [] # [[duration of rest, count]] ordered by descending count. produced by count_dictionary()
+        self.count_rhythm_chord = [] # [[duration of chord, count]] ordered by descending count. produced by count_dictionary()
 
-        self.note_duration = 0
+        # used for calculating percentages etc
+        self.total_note_duration = 0 
         self.note_count = 0
         self.interval_count = 0
         self.interval_ascending_count = 0
         self.interval_descending_count = 0
         self.interval_unison_count = 0
-        self.rest_duration = 0
+        self.total_rest_duration = 0
         self.rest_count = 0
-        self.chord_duration = 0
+        self.total_chord_duration = 0
         self.chord_count = 0
         self.accidental_count = 0 # displayed accidentals ie not in the key signature
         self.gracenote_count = 0
@@ -279,10 +282,10 @@ class AnalysePart:
         self.part = None
 
     #if a section doesn't contain any consecutive notes - then it doesn't contain any intervals...
-    #all the interval indexes will be -1 so compare_sections will think it is a match for intervals!
+    #since all the interval indexes default to None so we check this first otherwise compare_sections will think it is a match for intervals!
     def does_section_contain_intervals(self, section:AnalyseSection):
         for ai in section.analyse_indexes:
-            if (ai.interval_index[0]>-1):
+            if (ai.interval_index[0]!=None):
                 return True
         return False
 
@@ -298,11 +301,12 @@ class AnalysePart:
     def find_analyse_index(self, ai):
         ai_index = 0
         for a in self.analyse_indexes_list:
-            if self.compare_indexes(ai, self.analyse_indexes[ai_index]):
+            if self.compare_indexes(ai, a):
                 return ai_index
             ai_index += 1
         return -1
 
+    # find chord (based on midi pitches) in self.chord_pitches_list
     def find_chord(self, chord):
         chord_index=0
         find = sorted(p.midi for p in chord.pitches)
@@ -312,6 +316,7 @@ class AnalysePart:
             chord_index += 1
         return -1
     
+    # find chord (based on intervals) in self.chord_intervals_list
     def find_chord_intervals(self, chord_intervals):
         chord_index=0
         for c in self.chord_intervals_list:
@@ -320,66 +325,73 @@ class AnalysePart:
             chord_index += 1
         return -1
     
+    # return a sorted list of ascending intervals from lowest note - don't include 0
+    # major triad = [4, 7]
     def make_chord_intervals(self, chord):
         p1 = chord.pitches[0].midi
-        pitches = sorted(p.midi for p in chord.pitches)
+        pitches = sorted(p.midi for p in chord.pitches[1:])
         intervals = [p-p1 for p in pitches]
         return intervals
     
-    def when_is_measure_next_used(self, measure_index):
-        mia = self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]]
-        if len(mia)-1>self.measure_analyse_indexes_all[measure_index][1]:
-            return mia[self.measure_analyse_indexes_all[measure_index][1]+1] 
+    # measure_index = when is this measure next used
+    # from_all eg self.measure_analyse_indexes_all = {} # the index of every measure within measure_analyse_indexes_list {meausre_index, [index from measure_analyse_indexes_list, index from measure_analyse_indexes_dictionary]}
+    # from_indexes_dictionary eg self.measure_analyse_indexes_dictionary = {} # {index in measure_analyse_indexes_list, [list of measure indexes]}   
+    # returns the measure number or -1 if not found.
+    def when_is_measure_next_used(self, measure_index, from_all, from_indexes_dictionary):
+        mia = from_indexes_dictionary[from_all[measure_index][0]]
+        if len(mia)-1>from_all[measure_index][1]:
+            return mia[from_all[measure_index][1]+1] 
         else:
             return -1
 
-    def are_measures_in(self, group_list, current_measure_index, check_measure_index):
+    #from_list = list of lists where measure (eg rhythm) is repeated - eg [[1, 3, 6], [2, 4]] ie measure 1 is used at 3 and 6.  Measure 2 is used at 4.
+    #basically depending which list is passed in - see if two measures have the same rhythm / intervals etc
+    def are_measures_in(self, group_list, measure_index1, measure_index2):
         for group in group_list:
-            if current_measure_index in group and check_measure_index in group:
+            if measure_index1 in group and measure_index2 in group:
                 return True
         return False 
         
-        
-    def is_measure_used_at(self, current_measure_index, check_measure_index):
-        if not check_measure_index in self.measure_analyse_indexes_all:
+    # do two measures have matching pitch / rhythm / intervals etc    
+    def is_measure_used_at(self, indexes_all, current_measure_index, check_measure_index):
+        if not check_measure_index in indexes_all:
             return False
         else:    
-            if (self.measure_analyse_indexes_all[current_measure_index][0]==self.measure_analyse_indexes_all[check_measure_index][0]):
+            if (indexes_all[current_measure_index][0]==indexes_all[check_measure_index][0]):
                 return True
             else:
                 return False
-
-    def find_measure_group(self, mg, to_list):
-        mg_index=0
+    
+    #mg = start and end measure in group [1,4]
+    #mg_lists = list of lists of measure groups eg [ [[1,4],[5,8]], [[9,10],[11,12]] ]
+    def find_measure_group(self, mg, mg_lists):
         mg_index = 0
-        for measure_groups in to_list:
+        for measure_groups in mg_lists:
             for group in measure_groups:
                 if mg==group:
                     return mg_index
             mg_index += 1
         return -1
 
-    def calculate_rhythm_measures_not_full_match(self):
-        for measure_indexes in self.measure_rhythm_analyse_indexes_dictionary.values():
-            if len(measure_indexes)>1: # the rhythm of this measure is used more than once
+    # from_measures_dictionary will be eg measure_analyse_indexes_dictionary eg {0: [1,3], 1:[2,4]}
+    # not_full_match - when true, find eg rhythm or interval measures that are not a complete match
+    # returns eg [[1, 3], [2, 4]]
+    # does not return measures that are only used once
+    def calculate_repeated_measures_lists(self, from_measure_dictionary, not_full_match):
+        to_list = []
+        for measure_indexes in from_measure_dictionary.values():
+            if len(measure_indexes)>1: # this measure is used more than once
                 measures=[]
                 for measure_index in measure_indexes:
-                    if (len(self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]])==1):
+                    if (not_full_match==False or len(self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]])==1):
                         measures.append(measure_index)               
                 if len(measures)>1:
-                    self.measure_rhythm_not_full_match_all.append(measures)
+                    to_list.append(measures)
+        return to_list
 
-    def calculate_intervals_measures_not_full_match(self):
-        for measure_indexes in self.measure_intervals_analyse_indexes_dictionary.values():
-            if len(measure_indexes)>1: # the intervals of this measure is used more than once
-                measures=[]
-                for measure_index in measure_indexes:
-                    if (len(self.measure_analyse_indexes_dictionary[self.measure_analyse_indexes_all[measure_index][0]])==1):
-                        measures.append(measure_index)               
-                if len(measures)>1:
-                    self.measure_intervals_not_full_match_all.append(measures)
-
-    def calculate_repeated_measures_not_in_groups2(self, measures_list, groups_list, output_dictionary):
+    # find repeated measures that aren't already in a group
+    def calculate_repeated_measures_not_in_groups(self, measures_list, groups_list):
+        output_dictionary = {}
         for measure_indexes in measures_list:
             if len(measure_indexes)>1: # the measure is used more than once
                 measures=[]
@@ -389,19 +401,9 @@ class AnalysePart:
                 
                 if len(measures)>1:
                     output_dictionary[measures[0]] = measures[1:]
+        return output_dictionary
 
-
-    def calculate_repeated_measures_not_in_groups(self):
-        for measure_indexes in self.measure_analyse_indexes_dictionary.values():
-            if len(measure_indexes)>1: # the measure is used more than once
-                measures=[]
-                for measure_index in measure_indexes:
-                    if not self.in_measure_groups(measure_index, self.measure_groups_list):
-                        measures.append(measure_index)
-                
-                if len(measures)>1:
-                    self.repeated_measures_not_in_groups_dictionary[measures[0]] = measures[1:]
-
+    # is a measure already in a list of measure groups
     def in_measure_groups(self, measure_index, groups_list):
         for mgl in groups_list:
             for mg in mgl:
@@ -409,69 +411,54 @@ class AnalysePart:
                     return True
         return False
 
+    # are both measures already in the same group.  Ie 1 to 4 is used at 5 to 8.  So 2 to is used at 6 to 8 - but you don't want to say that.
+    def are_measures_in_same_group(self, measure_index1, measure_index2, groups_list):
+        for mgl in groups_list:
+            for mg in mgl:
+                if measure_index1>=mg[0] and measure_index1<=mg[1] and measure_index2>=mg[0] and measure_index2<=mg[1]:
+                    return True
+        return False
+
+    #from_indexes_all eg self.measure_analyse_indexes_all - {meausre_index, [index from measure_analyse_indexes_list, index from measure_analyse_indexes_dictionary]}
+    #from_indexes_dictionary eg measure_analyse_indexes_dictionary - {index in measure_analyse_indexes_list, [list of measure indexes]}
+    #returns eg self.measure_groups_list = [] #groups of repeated measures [ [[1, 4], [9, 12]], [[5, 6], [7,8]] ] 
     #TODO - improve so it the first measure in the group can be used more than once
-    def calculate_groups(self, from_list, to_list):
+    def calculate_measure_groups(self, from_indexes_all, from_indexes_dictionary):
+        to_list = []
         next_used_at = 1
         group_size = 1
         gap = 1
         skip=0
-        print("calcuating measure gruops - not full match")
-        for measures in from_list:
-            for index, measure in enumerate(measures):
-                if (index<len(measures)-1):
-                    next_used_at = measures[index+1]
-                    gap = next_used_at - measure
-                    if gap>1:
-                        group_size=1
-                        while (self.are_measures_in(from_list, measure + group_size, measure + group_size + gap) and group_size<gap):
-                            group_size+=1
-                        
-                        group_size-=1
-                            
-                        if (group_size>0):
-                            measure_group = [measure, measure + group_size]
-                            measure_group_index = self.find_measure_group(measure_group, to_list)
-                            if (measure_group_index==-1): #ie need to add 1st and 2nd occurance.  When you come to 2nd and 3rd occurance - the 2nd occurance will already have been added.  Does it this way to avoid not adding the final occurance
-                                to_list.append([measure_group])
-                                to_list[len(to_list)-1].append([measure + gap, measure + gap + group_size])
-                            else:
-                                to_list[measure_group_index].append([measure + gap, measure + gap + group_size])
-                        
-                            skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
-
-
-    #TODO - improve so it the first measure in the group can be used more than once
-    def calculate_measure_groups(self):
-        next_used_at = 1
-        group_size = 1
-        gap = 1
-        skip=0
-        print("calculating measure groups")
-        for look_at_measure in self.measure_analyse_indexes_all:
+        for look_at_measure in from_indexes_all:
+            #if measures 1 to 4 are repeated then don't mention that 2 to 4 and 3 to 4 are also repeated!
             if (skip>0):
                 skip-=1
                 continue
 
-            next_used_at = self.when_is_measure_next_used(look_at_measure)
+            #see when the current measure is next used
+            next_used_at = self.when_is_measure_next_used(look_at_measure, from_indexes_all, from_indexes_dictionary)
             if next_used_at>-1:
                 gap = next_used_at - look_at_measure
+                #eg if 4 is used at 6, check if 5 is used at 7
                 if gap>1:
                     group_size=1
-                    while (self.is_measure_used_at(look_at_measure + group_size, look_at_measure + group_size + gap) and group_size<gap):
+                    while (self.is_measure_used_at(from_indexes_all, look_at_measure + group_size, look_at_measure + group_size + gap) and group_size<gap):
                         group_size+=1
                     
                     group_size-=1
-                        
+
+                    #if a group of bars is actually repeated    
                     if (group_size>0):
                         measure_group = [look_at_measure, look_at_measure + group_size]
-                        measure_group_index = self.find_measure_group(measure_group, self.measure_groups_list)
+                        measure_group_index = self.find_measure_group(measure_group, to_list)
                         if (measure_group_index==-1): #ie need to add 1st and 2nd occurance.  When you come to 2nd and 3rd occurance - the 2nd occurance will already have been added.  Does it this way to avoid not adding the final occurance
-                            self.measure_groups_list.append([measure_group])
-                            self.measure_groups_list[len(self.measure_groups_list)-1].append([look_at_measure + gap, look_at_measure + gap + group_size])
+                            to_list.append([measure_group])
+                            to_list[len(to_list)-1].append([look_at_measure + gap, look_at_measure + gap + group_size])
                         else:
-                            self.measure_groups_list[measure_group_index].append([look_at_measure + gap, look_at_measure + gap + group_size])
+                            to_list[measure_group_index].append([look_at_measure + gap, look_at_measure + gap + group_size])
                     
                         skip=group_size #not great as it overlooks possible smaller gruops within large groups eg it will find 1 t 8 being used at 9 to 16 but miss 1 to 4 being used at 17 to 20.
+        return to_list
 
     def describe_repetition_percentage(self, percent):
         if percent>99:
@@ -487,7 +474,7 @@ class AnalysePart:
         else:
             return ""
 
-    #return a list with commas and an in the right place
+    #return a list with commas plus an and in the right place
     #eg [1,4,6] = "1, 4 and 6"
     def comma_and_list(self, l):
         output = ""
@@ -499,15 +486,20 @@ class AnalysePart:
             output += str(v)
         return output
 
+
+    # count_in_measures = a dictionary {measure index, number of eg rests accidentals in that measure}
+    # total = the total number of rests / accidentals 
     def describe_distribution(self, count_in_measures, total):
         distribution = ""
 
+        # make a dictionary of percentages for each measure then sort by percent descending
         measure_percents = {}
         for k, c in count_in_measures.items():
             if c>0:
                 measure_percents[k] = (c/total)*100        
         sorted_percent = dict(sorted(measure_percents.items(), reverse=True, key=lambda item: item[1]))
         
+        # get any measures with more than a high percent (eg 20%) to name individually
         ms=[]
         to_pop = [] #can't pop during for loop
         for m,p in sorted_percent.items():
@@ -525,7 +517,8 @@ class AnalysePart:
                 distribution += "s"
             distribution += " "
             distribution += self.comma_and_list(ms)
-            
+
+        # now see if the remaining measures are mostly in a particular quarter 
         if len(measure_percents)>0:
             if not distribution=="":
                 distribution += " and "
@@ -541,11 +534,14 @@ class AnalysePart:
                     dist[0]+=(mp/percent_remaining)*100
             sorted_dist = sorted(dist.items(), reverse=True, key=lambda item: item[1])
             positions = " "
+            #if over half are in one quarter - mention it
             if sorted_dist[0][1]>50:
                 positions += self._position_map[sorted_dist[0][0]]
+            #if over 70% are in two quarters - name them
             elif sorted_dist[0][1] + sorted_dist[1][1]>70:
                 positions += self._position_map[sorted_dist[0][0]] + " and " + self._position_map[sorted_dist[1][0]]
             else:
+                #not in any two quarters - so just say how many bars
                 positions += "in " + str(len(measure_percents)) + " bars throughout"
             
             distribution += positions
@@ -571,7 +567,7 @@ class AnalysePart:
         else:
             return ""
 
-    #an event that is uncommon - like accidentals - so the descriptions weighted differently
+    #an event that is uncommon - like accidentals - so the descriptions are weighted differently
     def describe_percentage_uncommon(self, percent):
         if percent>5:
             return "many"
@@ -601,7 +597,7 @@ class AnalysePart:
         
         return description
 
-    #if nothing is over 30% for describe_count_list - then 
+    #if no single item is over 30% for describe_count_list - then we might want to 
     def describe_count_list_several(self, count_list, total, item_name):
         description = ""
         upto_percent = []
@@ -626,16 +622,15 @@ class AnalysePart:
 
 
     def describe_summary(self):
-        print("describing summary...")
         summary = ""
         event_count = self.chord_count + self.note_count + self.rest_count
-        event_duration = self.chord_duration + self.note_duration + self.rest_duration
+        event_duration = self.total_chord_duration + self.total_note_duration + self.total_rest_duration
 
         #lower weighting to number of items than to duration - ie 1 bar of semiquavers vs 8 bars of minims!
         percent_dictionary = {}
-        percent_dictionary["chords"] =  ((self.chord_count/event_count*50) + (self.chord_duration/event_duration*150)) / 2
-        percent_dictionary["individual notes"] =  ((self.note_count/event_count*50) + (self.note_duration/event_duration*150)) / 2
-        percent_dictionary["rests"] =  ((self.rest_count/event_count*50) + (self.rest_duration/event_duration*150)) / 2
+        percent_dictionary["chords"] =  ((self.chord_count/event_count*50) + (self.total_chord_duration/event_duration*150)) / 2
+        percent_dictionary["individual notes"] =  ((self.note_count/event_count*50) + (self.total_note_duration/event_duration*150)) / 2
+        percent_dictionary["rests"] =  ((self.rest_count/event_count*50) + (self.total_rest_duration/event_duration*150)) / 2
         
         for k,v in sorted(percent_dictionary.items(), key=lambda item: item[1], reverse=True):
             if v>1:
@@ -647,7 +642,7 @@ class AnalysePart:
                     chord_count = self.describe_count_list(self.count_rhythm_chord, self.chord_count)
                     if chord_count!="":
                         describe_count += chord_count + ", "
-                    count_notes_in_chords_list = sorted_dist = sorted(self.count_notes_in_chords.items(), reverse=True, key=lambda item: item[1])
+                    count_notes_in_chords_list = sorted(self.count_notes_in_chords.items(), reverse=True, key=lambda item: item[1])
                     note_count = self.describe_count_list(count_notes_in_chords_list, self.chord_count)
                     if note_count!="":
                         describe_count += note_count + " notes, "
@@ -700,7 +695,6 @@ class AnalysePart:
                 summary += " (" + dist + "), "
         
         #describe the number of grace notes and where they mostly occur
-        print ("grace note count = " + str(self.gracenote_count) + " possible = " + str(self.possible_accidental_count))
         if self.gracenote_count>1:
             gracenote_percent = (self.gracenote_count/self.possible_accidental_count)*100
             summary+=self.describe_percentage_uncommon(gracenote_percent) + " grace notes"
@@ -718,10 +712,12 @@ class AnalysePart:
             to_return += add
         return to_return
 
+    # describes groups of measures and individual measures where the notes pitches and / or rhythm are the same
     def describe_repetition(self):
         repetition = ""
         if len(self.measure_groups_list)>0:
             for group in self.measure_groups_list:
+                #see if a group repetition is over half the score
                 group_repetition_percent = ((group[0][1]-group[0][0]+1)*len(group)/len(self.measure_indexes))*100
                 if group_repetition_percent>50:
                     if (group[0][1]-group[0][0]==1): # x and y or x to y.
@@ -732,6 +728,7 @@ class AnalysePart:
                     repetition += self.describe_repetition_percentage(group_repetition_percent)
                     repetition += " of the way through.  "
                 else:
+                    #just describe where the group is repeated
                     if (group[0][1]-group[0][0]==1): # x and y or x to y.
                         repetition+="Bars " + str(group[0][0]) + " and " + str(group[0][1])
                     else:
@@ -745,6 +742,7 @@ class AnalysePart:
                         repetition+= str(ms[0])
                     repetition += ".  "
             
+        # individual bars repeated
         for key, ms in self.repeated_measures_not_in_groups_dictionary.items():
             repetition += "Bar " + str(key) + " is used at "
             for index, m in enumerate(ms):
@@ -758,7 +756,7 @@ class AnalysePart:
         if repetition == "":
             repetition+="There are no repeated bars...  "
 
-        #rhythm
+        #just rhythm
         rhythm_repetition = ""
         if len(self.measure_rhythm_not_full_match_groups_list)>0:
             for group in self.measure_rhythm_not_full_match_groups_list:
@@ -775,7 +773,8 @@ class AnalysePart:
                     
                     rhythm_repetition += str(ms[0])
                 rhythm_repetition += ".  "
-
+        
+        #individual measures with repeated rhythm  
         for key, ms in self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary.items():
             rhythm_repetition += "The rhythm in bar " + str(key) + " is used at "
             for index, m in enumerate(ms):
@@ -809,6 +808,7 @@ class AnalysePart:
                     interval_repetition += str(ms[0])
                 interval_repetition += ".  "
 
+        #individual measures with repeated intervals
         for key, ms in self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary.items():
             interval_repetition += "The intervals in bar " + str(key) + " are used at "
             for index, m in enumerate(ms):
@@ -826,22 +826,19 @@ class AnalysePart:
 
         return repetition
 
-    def setPart(self, p):
+    #analyse each part
+    def set_part(self, p):
         self.part = p
-        print("I'm setting a part...")
-        print (p)
-
-        for i in range(128):
-            self.pitch_list.append([])
-
+        
         event_index = 0
-        last_note_pitch = -1
+        previous_note_pitch = -1 # needed to work out intervals
         current_measure=-1
         measure_analyse_indexes = AnalyseSection()
-        measure_accidentals = 0
-        measure_gracenotes = 0
-        measure_rests = 0
+        measure_accidentals = 0 # count
+        measure_gracenotes = 0 # count
+        measure_rests = 0 # count
         for n in self.part.flat.notesAndRests:
+            #the start of a new measure
             if (n.measureNumber>current_measure):
                 self.measure_indexes[n.measureNumber] = event_index
                 current_measure = n.measureNumber
@@ -853,7 +850,6 @@ class AnalysePart:
                     self.count_rests_in_measures[current_measure-1] = measure_rests
                     measure_rests = 0
                     
-
                     index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
                     if index == -1:
                         self.measure_analyse_indexes_list.append(measure_analyse_indexes)
@@ -888,7 +884,7 @@ class AnalysePart:
                             self.measure_intervals_analyse_indexes_all[current_measure-1] = [index, len(self.measure_intervals_analyse_indexes_dictionary[index])-1]
                         
                     measure_analyse_indexes = AnalyseSection()
-                    last_note_pitch=-1 # reset interval comparison for each measure
+                    previous_note_pitch=-1 # reset interval comparison for each measure
 
             ai = AnalyseIndex(event_index)
             if n.isRest:
@@ -901,8 +897,8 @@ class AnalysePart:
                     self.rhythm_rest_dictionary[d].append(event_index)
                 ai.rhythm_rest_index = [d, len(self.rhythm_rest_dictionary.get(d))-1]
                 
-                last_note_pitch = -1
-                self.rest_duration += d
+                previous_note_pitch = -1
+                self.total_rest_duration += d
                 self.rest_count += 1
             elif n.isChord:
                 ai.event_type = 'c'
@@ -942,7 +938,7 @@ class AnalysePart:
                 ai.chord_interval_index = [index, len(self.chord_intervals_dictionary.get(index))-1]
                 
                 common_name = n.commonName
-                #music21 describes eg A, D, E as a quatral trichord - ie E, A, D are perfect fourths...
+                #music21 describes eg A, D, E as a quatral trichord - ie E, A, D are perfect fourths - but I prefer Suspended 4ths or 2nds...
                 if chord_intervals == [0, 5, 7]:
                     common_name = "Suspended 4th"
                 elif chord_intervals == [0, 2, 7]:
@@ -958,10 +954,9 @@ class AnalysePart:
                     if p.accidental is not None and p.accidental.displayStatus == True:
                         measure_accidentals += 1
                         self.accidental_count += 1
-                        print("chord accidental displayed")
                 self.possible_accidental_count += len(n.pitches)
 
-                self.chord_duration += d
+                self.total_chord_duration += d
                 self.chord_count += 1
             elif n.isChord == False:
                 ai.event_type = 'n'
@@ -969,12 +964,10 @@ class AnalysePart:
                 if n.pitch.accidental is not None and n.pitch.accidental.displayStatus == True:
                     measure_accidentals += 1
                     self.accidental_count += 1
-                    print("it has an accidental " + str(n.pitch) + " and display = " + str(n.pitch.accidental.displayStatus))
                 self.possible_accidental_count += 1
                 
-                self.pitches[n.pitch.midi] += 1
-                self.pitch_list[n.pitch.midi].append(event_index)
-                ai.pitch_number_index = [n.pitch.midi, len(self.pitch_list[n.pitch.midi])-1]
+                self.pitch_number_dictionary[n.pitch.midi].append(event_index)
+                ai.pitch_number_index = [n.pitch.midi, len(self.pitch_number_dictionary[n.pitch.midi])-1]
                 
                 if self.pitch_name_dictionary.get(n.pitch.name) == None:
                     self.pitch_name_dictionary[n.pitch.name] = [event_index]
@@ -982,8 +975,9 @@ class AnalysePart:
                     self.pitch_name_dictionary[n.pitch.name].append(event_index)
                 ai.pitch_name_index = [n.pitch.name, len(self.pitch_name_dictionary[n.pitch.name])-1]
                 
-                if (last_note_pitch>-1):
-                    interval = n.pitch.midi-last_note_pitch
+                #intervals
+                if (previous_note_pitch>-1):
+                    interval = n.pitch.midi-previous_note_pitch
                     if self.interval_dictionary.get(interval) == None:
                         self.interval_dictionary[interval] = [event_index]
                     else:
@@ -1002,6 +996,7 @@ class AnalysePart:
                     if interval_abs<24:
                         self.count_intervals_abs[interval_abs] += 1
 
+                # duration
                 d = n.duration.quarterLength #numeric value
                 if d==0.0:
                     measure_gracenotes += 1
@@ -1013,20 +1008,22 @@ class AnalysePart:
                         self.rhythm_note_dictionary[d].append(event_index)
                     ai.rhythm_note_index = [d, len(self.rhythm_note_dictionary.get(d))-1]
                     
-                last_note_pitch = n.pitch.midi
-                self.note_duration += d
+                previous_note_pitch = n.pitch.midi
+                self.total_note_duration += d
                 self.note_count += 1
             
+            #AnalyseIndex - ie is it a unique event
             index = self.find_analyse_index(ai)
             if index == -1:
                 self.analyse_indexes_list.append(ai)
                 index = len(self.analyse_indexes_list)-1
                 self.analyse_indexes_dictionary[index] = [event_index]
+                self.analyse_indexes_all[event_index] = [index, 0]
             else:
                 self.analyse_indexes_dictionary[index].append(event_index)
-            
+                self.analyse_indexes_all[event_index] = [index, len(self.analyse_indexes_dictionary[index])-1]
 
-            self.analyse_indexes.append(ai)
+            #self.analyse_indexes.append(ai)
             measure_analyse_indexes.analyse_indexes.append(ai)
             event_index = event_index + 1 
 
@@ -1037,7 +1034,6 @@ class AnalysePart:
             self.count_rests_in_measures[current_measure-1] = measure_rests
             
             index = self.find_section(measure_analyse_indexes, self.measure_analyse_indexes_list, 0)
-            print ("adding last measure " + str(len(measure_analyse_indexes.analyse_indexes)) + " and index = " + str(index) + " and current measure = " + str(current_measure) )
             if index == -1:
                 self.measure_analyse_indexes_list.append(measure_analyse_indexes)
                 index = len(self.measure_analyse_indexes_list)-1
@@ -1070,166 +1066,51 @@ class AnalysePart:
                     self.measure_intervals_analyse_indexes_dictionary[index].append(current_measure)
                     self.measure_intervals_analyse_indexes_all[current_measure] = [index, len(self.measure_intervals_analyse_indexes_dictionary[index])-1]
                 
-        for i in range (19):
-            self.analyse_indexes[i].print_info()
-            #print(self.compare_indexes(self.analyse_indexes[0], self.analyse_indexes[i]))
-            
-
-        print ("rhythm chord dictionary")
-        print(self.rhythm_chord_dictionary)
-        print ("rhythm note dictionary")
-        print(self.rhythm_note_dictionary)
-        print ("rhythm rest dictionary")
-        print(self.rhythm_rest_dictionary)
-
-        print ("measure_analyse_indexes_dictionary")
-        print(self.measure_analyse_indexes_dictionary)
-
-        #for i in range (128):
-            #if self.pitches[i]>0:
-                #print("i = " + str(i) + " - " + str(self.pitches[i]))
-                #print(self.pitch_list[i])
-
-        #print(self.rhythm_note_dictionary)
-
-        print("\n ### after \n")
-        print("note count = " + str(self.note_count))
-        print("note duration = " + str(self.note_duration))
-        print("rest count = " + str(self.rest_count))
-        print("rest duration = " + str(self.rest_duration))
-        print("chord count = " + str(self.chord_count))
-        print("chord duration = " + str(self.chord_duration))
-
-        print ("\n ### \n")
-
-        #print(self.chord_intervals_list)
-        #print(self.chord_intervals_dictionary)
-
-        print("\nmeasure analysis diectionary...")
-        print (self.measure_analyse_indexes_dictionary)
-        print("end of measure analysis...")
+        print("\n Done set_part() - note count = " + str(self.note_count) + " chord count = " + str(self.chord_count) + " rest count = " + str(self.rest_count) + "...")
+                
+        self.repeated_measures_lists = self.calculate_repeated_measures_lists(self.measure_analyse_indexes_dictionary, False)
+        self.measure_groups_list = self.calculate_measure_groups(self.measure_analyse_indexes_all, self.measure_analyse_indexes_dictionary)
+        self.repeated_measures_not_in_groups_dictionary = self.calculate_repeated_measures_not_in_groups(self.measure_analyse_indexes_dictionary.values(), self.measure_groups_list)
         
-        print("\nmeasure_analyse_indexes_all...")
-        print (self.measure_analyse_indexes_all)
-        print("end of measure_analyse_indexes_all...")
+        self.repeated_measures_lists_rhythm = self.calculate_repeated_measures_lists(self.measure_rhythm_analyse_indexes_dictionary, True)
+        self.measure_rhythm_not_full_match_groups_list = self.calculate_measure_groups(self.measure_rhythm_analyse_indexes_all, self.measure_rhythm_analyse_indexes_dictionary)
+        self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary = self.calculate_repeated_measures_not_in_groups(self.repeated_measures_lists_rhythm, self.measure_rhythm_not_full_match_groups_list)
         
-        self.calculate_measure_groups()
-        print("\nmeasure_groups_list...")
-        print (self.measure_groups_list)
-        print("end of measure_groups_list...")
+        self.repeated_measures_lists_intervals = self.calculate_repeated_measures_lists(self.measure_intervals_analyse_indexes_dictionary, True)
+        self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary = self.calculate_repeated_measures_not_in_groups(self.repeated_measures_lists_intervals, self.measure_intervals_not_full_match_groups_list)
+        self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary = self.calculate_repeated_measures_not_in_groups(self.repeated_measures_lists_intervals, self.measure_intervals_not_full_match_groups_list)
         
-        self.calculate_repeated_measures_not_in_groups()
-        print("\nrepeated measures not in groups...")
-        print (self.repeated_measures_not_in_groups_dictionary)
-        
-        print("\nrhythm measures dictionary...")
-        print (self.measure_rhythm_analyse_indexes_dictionary)
-        
-        print("\nintervals measures dictionary...")
-        print (self.measure_intervals_analyse_indexes_dictionary)
-        
-        print("\nmeasure intervals analyse indexes list...")
-        print (self.measure_intervals_analyse_indexes_list)
-        
-
-        self.calculate_rhythm_measures_not_full_match()
-        print("\nrhythm measures not full match...")
-        print (self.measure_rhythm_not_full_match_all)
-
-        self.calculate_groups(self.measure_rhythm_not_full_match_all, self.measure_rhythm_not_full_match_groups_list)
-        print("\nrhythm groups not full match...")
-        print (self.measure_rhythm_not_full_match_groups_list)
-        self.calculate_repeated_measures_not_in_groups2(self.measure_rhythm_not_full_match_all, self.measure_rhythm_not_full_match_groups_list, self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary)
-        print(self.repeated_rhythm_measures_not_full_match_not_in_groups_dictionary)
-
-        self.calculate_intervals_measures_not_full_match()
-        print("\nintervals measures not full match...")
-        print (self.measure_intervals_not_full_match_all)
-        self.calculate_repeated_measures_not_in_groups2(self.measure_intervals_not_full_match_all, self.measure_intervals_not_full_match_groups_list, self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary)
-        print (self.repeated_intervals_measures_not_full_match_not_in_groups_dictionary)
-
-
-        self.calculate_groups(self.measure_intervals_not_full_match_all, self.measure_intervals_not_full_match_groups_list)
-        print("\nintervals groups not full match...")
-        print (self.measure_intervals_not_full_match_groups_list)
-
-        print("\nmeasure rhythm analysis diectionary...")
-        print (self.measure_rhythm_analyse_indexes_dictionary)
-        
-        print("\nmeasure intervals analysis diectionary...")
-        print (self.measure_intervals_analyse_indexes_dictionary)
-        
-        
-        print("\nchord common name diectionary...")
-        print (self.chord_common_name_dictionary)
- 
         #make lists of index and totals then sort by totals for eg most common pitch / rhythm etc
-        #lists
-        self.count_pitches = self.count_list(self.pitch_list)
-        print("\nPitches count...")
-        print(self.count_pitches)
-        
-        print("\nAccidentals in measures count")
-        print(self.count_accidentals_in_measures)
-        print("\nGrace notes in measures count")
-        print(self.count_gracenotes_in_measures)
-        print("Possible accidentals = " + str(self.possible_accidental_count))
-        print("accidentals count = " + str(self.accidental_count) + "\n") 
-
-        #dictionaries
+        self.count_pitches = self.count_dictionary(self.pitch_number_dictionary)
         self.count_pitch_names = self.count_dictionary(self.pitch_name_dictionary)
-        print (self.count_pitch_names)
         self.count_intervals = self.count_dictionary(self.interval_dictionary)
         self.count_chord_common_names = self.count_dictionary(self.chord_common_name_dictionary)
-        
         
         self.count_rhythm_note = self.count_dictionary(self.rhythm_note_dictionary)
         self.count_rhythm_rest = self.count_dictionary(self.rhythm_rest_dictionary)
         self.count_rhythm_chord = self.count_dictionary(self.rhythm_chord_dictionary)
-        print ("\ncount_rhythm_note = ")
-        print(self.count_rhythm_note)
         self.rename_count_list_keys(self.count_rhythm_note, self._DURATION_MAP)
         self.rename_count_list_keys(self.count_rhythm_rest, self._DURATION_MAP)
         self.rename_count_list_keys(self.count_rhythm_chord, self._DURATION_MAP)
-        print ("\nand now count_rhythm_note = ")
-        print(self.count_rhythm_note)
         
         #dictionaries with list indexes as keys
         self.count_chord_pitches = self.count_dictionary(self.chord_pitches_dictionary)
         self.count_chord_intervals = self.count_dictionary(self.chord_intervals_dictionary)
         
-        #self.count_pitches = self.count_list(self.pitch_list)
 
+    #count_list is like count_rhythm_note [[duration of individual note, count]] ordered by descending count.         
+    #duration is a decimal number of quarter notes ie 0.5 for an eight note - 
+    #swaps numeric duration for words
     def rename_count_list_keys(self, count_list, key_names):
         for item in count_list:
             if item[0] in key_names:
                 item[0] = key_names.get(item[0])
-
-    def sort_count_list(self, e):
-        return e[1]
-
+    
+    #d = {key, [list]} eg pitch_name_dictionary
+    #returns eg [[C#, 5], [A,3]]
     def count_dictionary(self, d):
         sorted_list = []
         for k, v in d.items():
             sorted_list.append([k, len(v)])
-        sorted_list.sort(reverse=True, key=self.sort_count_list)
+        sorted_list.sort(reverse=True, key=lambda item: item[1])
         return sorted_list
-
-    def count_list(self, l):
-        sorted_list = []
-        i = 0
-        for item in l:
-            if len(item)>0:
-                sorted_list.append([i, len(item)])
-            i += 1
-        sorted_list.sort(reverse=True, key=self.sort_count_list)
-        return sorted_list
-
-
-    #get keys in order of items in list - for w in sorted(self.chord_common_name_dictionary, key=self.sort_count_dictionary, reverse=True):
-    def sort_count_dictionary(self, e):
-        return len(e)
-
-
-
-

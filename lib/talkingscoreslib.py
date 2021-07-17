@@ -145,7 +145,6 @@ class Music21TalkingScore(TalkingScoreBase):
     music_analyser = None;
 
     def __init__(self, musicxml_filepath):
-        print("init on Music21TalkingScore...")
         self.filepath = os.path.realpath(musicxml_filepath)
         self.score = converter.parse(musicxml_filepath)
         self.music_analyser = MusicAnalyser()
