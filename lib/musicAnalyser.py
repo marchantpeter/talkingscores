@@ -309,6 +309,7 @@ class AnalysePart:
 
         self.count_accidentals_in_measures = {}  # {measure number, number of accidentals in it}
         self.count_gracenotes_in_measures = {}  # {measure number, number of accidentals in it}
+        self.count_unpitched_in_measures = {}  # {measure number, number of unpithced notes in it}
         self.count_rests_in_measures = {}  # {measure number, number of accidentals in it}
 
         self.chord_pitches_list = []  # each unique chord based on pitches (midi number)
@@ -342,6 +343,7 @@ class AnalysePart:
         self.chord_count = 0
         self.accidental_count = 0  # displayed accidentals ie not in the key signature
         self.gracenote_count = 0
+        self.unpitched_count = 0
         self.possible_accidental_count = 0  # each note - on its own or part of a chord
 
         self.part = None
@@ -762,6 +764,14 @@ class AnalysePart:
             if not dist == "":
                 summary += " (" + dist + "), "
 
+        # describe the number of unpitched notes and where they mostly occur
+        if self.unpitched_count > 1:
+            unpitched_percent = (self.unpitched_count/self.possible_accidental_count)*100
+            summary += self.describe_percentage_uncommon(unpitched_percent) + " unpitched notes"
+            dist = (self.describe_distribution(self.count_unpitched_in_measures, self.unpitched_count))
+            if not dist == "":
+                summary += " (" + dist + ")."
+
         # describe the number of grace notes and where they mostly occur
         if self.gracenote_count > 1:
             gracenote_percent = (self.gracenote_count/self.possible_accidental_count)*100
@@ -1121,6 +1131,7 @@ class AnalysePart:
         measure_analyse_indexes = AnalyseSection()
         measure_accidentals = 0  # count
         measure_gracenotes = 0  # count
+        measure_unpitched = 0  # count
         measure_rests = 0  # count
         for n in self.part.flat.notesAndRests:
             # the start of a new measure
@@ -1133,6 +1144,8 @@ class AnalysePart:
                     measure_accidentals = 0
                     self.count_gracenotes_in_measures[current_measure-1] = measure_gracenotes
                     measure_gracenotes = 0
+                    self.count_unpitched_in_measures[current_measure-1] = measure_unpitched
+                    measure_unpitched = 0
                     self.count_rests_in_measures[current_measure-1] = measure_rests
                     measure_rests = 0
 
@@ -1246,8 +1259,10 @@ class AnalysePart:
                 self.total_chord_duration += d
                 self.chord_count += 1
             elif n.isChord == False:
-                if isinstance(n, note.Unpitched):
+                if isinstance(n, note.Unpitched) or isinstance(n, percussion.PercussionChord) or n.notehead=='x':
                     ai.event_type = 'u'
+                    self.unpitched_count += 1
+                    measure_unpitched += 1
                 else:
 
                     ai.event_type = 'n'
@@ -1301,8 +1316,10 @@ class AnalysePart:
                         self.rhythm_note_dictionary[d].append(event_index)
                     ai.rhythm_note_index = [d, len(self.rhythm_note_dictionary.get(d))-1]
 
-                if isinstance(n, note.Unpitched):
+                if isinstance(n, note.Unpitched) or isinstance(n, percussion.PercussionChord):
                     previous_note_pitch = -1
+                    self.unpitched_count += 1
+                    measure_unpitched += 1
                 else:
                     previous_note_pitch = n.pitch.midi
                 self.total_note_duration += d

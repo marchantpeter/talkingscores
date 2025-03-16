@@ -138,6 +138,7 @@ class TSPitch(TSEvent):
             return ""
 
 
+# todo - maybe describe the displayName of unpitched notes and in PercussionChord?
 class TSUnpitched(TSEvent):
     pitch = None
 
@@ -149,7 +150,14 @@ class TSUnpitched(TSEvent):
         rendered_elements.append(' unpitched')
         return rendered_elements
 
-
+class TSPercussionChord(TSEvent):
+    def render(self, context=None):
+        rendered_elements = []
+        # Render the duration
+        rendered_elements.append(' '.join(super(TSPercussionChord, self).render(context)))
+        # Render the pitch
+        rendered_elements.append(' Percussion Chord')
+        return rendered_elements
 class TSRest(TSEvent):
     pitch = None
 
@@ -164,6 +172,7 @@ class TSRest(TSEvent):
 
 class TSNote(TSEvent):
     pitch = None
+    notehead = None
     expressions = []
 
     def render(self, context=None):
@@ -174,6 +183,8 @@ class TSNote(TSEvent):
         # Render the duration
         rendered_elements.append(' '.join(super(TSNote, self).render(context, self.pitch.pitch_letter)))
         # Render the pitch
+        if (self.notehead=='x'):
+            rendered_elements.append(' crossed notehead ')
         rendered_elements.append(' '.join(self.pitch.render(getattr(context, 'pitch', None))))
         return rendered_elements
 
@@ -540,6 +551,8 @@ class Music21TalkingScore(TalkingScoreBase):
             if element_type == 'Note':
                 event = TSNote()
                 event.pitch = TSPitch(self.map_pitch(element.pitch), self.map_octave(element.pitch.octave), element.pitch.ps, element.pitch.name[0])
+                event.notehead = element.notehead
+                print("pitch = " + event.pitch.pitch_name + " voice  = " + str(voice))
                 description_order = 1
                 if element.tie:
                     event.tie = element.tie.type
@@ -547,6 +560,9 @@ class Music21TalkingScore(TalkingScoreBase):
                 event.expressions = element.expressions
             elif element_type == 'Unpitched':
                 event = TSUnpitched()
+                description_order = 1
+            elif element_type == 'PercussionChord':
+                event = TSPercussionChord()
                 description_order = 1
             elif element_type == 'Rest':
                 event = TSRest()
@@ -564,6 +580,7 @@ class Music21TalkingScore(TalkingScoreBase):
                 description_order = 0  # Always speak the dynamic first
 
             elif element_type == 'Voice':
+                print("Got a voice " + element.id)
                 self.update_events_for_measure(element, events, int(element.id))
 
             if event is None:
