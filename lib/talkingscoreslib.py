@@ -552,7 +552,7 @@ class Music21TalkingScore(TalkingScoreBase):
                 event = TSNote()
                 event.pitch = TSPitch(self.map_pitch(element.pitch), self.map_octave(element.pitch.octave), element.pitch.ps, element.pitch.name[0])
                 event.notehead = element.notehead
-                print("pitch = " + event.pitch.pitch_name + " voice  = " + str(voice))
+                logger.debug( f"pitch = {event.pitch.pitch_name}.  Voice = {voice}.  Beat = {element.beat}" )
                 description_order = 1
                 if element.tie:
                     event.tie = element.tie.type

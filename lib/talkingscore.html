@@ -11,8 +11,13 @@
     <style type="text/css">
         body{font-family: Georgia; font-size: 26pt}
         
-        h4 {
-            margin-block-end:1rem;
+        h4, h5 {
+            margin-block-end:0.5rem;
+        }
+
+        h5 {
+            margin-block-start:0.5rem;
+            margin-block-end:0.5rem;
         }
     </style>
 </head>
@@ -132,7 +137,8 @@
             {#  Loop over each bar pulling out the beat-based dictionaries #}
             {% for bar, events_for_beats in part_description.items() %}
                 {#% if not loop.first %}<br/>{% endif %#}
-                <h4>Bar: {{ bar }}</h4>
+                <h4>Bar {{ bar }}:</h4>
+                {% set multiple_voices_in_measure = {'value' : False} %}
                 {% if bar in repetition_in_contexts[instruments[instrument_index][1] + part_index] %}
                     Repetition - {{repetition_in_contexts[instruments[instrument_index][1] + part_index][bar]}} 
                     <br/> <br/>
@@ -146,12 +152,15 @@
                 {% endif %}
                 {#  Loop over each beat pulling out the hand-based dictionaries #}
                 {% for beat, events_per_beat in events_for_beats.items() %}
-                    {# {% if not loop.first %}<br/>{% endif %}#}
-                    <div>Beat {{ beat }}:
+                    {% if not loop.first %}<br/>{% endif %}
+                    Beat {{ beat }}:
                     {% set previous_event = {'value' : None} %}
-                    {#  Loop over each hand #}
-                    {% for voice, events_per_voice in events_per_beat|dictsort %}
-                        {% if not loop.first %} - together with {% endif %}
+                    {% for voice, events_per_voice in events_per_beat.items() %}
+                        {% if events_per_beat|length>1 or multiple_voices_in_measure['value']==true %} 
+                            <h5>Voice {{voice}}:</h5>
+                            {% set _ = multiple_voices_in_measure.update({'value': true}) %}
+                        {% endif %}
+                        
                         {% for pitch_space, events in events_per_voice.items() %}
                             {% if not loop.first %}, {% endif %}
                             {#  Loop over the events  #}
@@ -164,7 +173,6 @@
                         {% endfor %} {# End loop over pitch indexes #}
                     {% endfor %}. {# End loop over voices #}
             
-                    </div>
                 {% endfor %} {# End loop over beats #}                    
             {% endfor %} {# End loop over bars #}
 
