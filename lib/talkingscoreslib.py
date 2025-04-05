@@ -524,10 +524,20 @@ class Music21TalkingScore(TalkingScoreBase):
 
                 if first.measureNumber >= start_bar and first.measureNumber <= end_bar:
                     event = TSDynamic(long_name=f'{spanner_type} start')
+                    #the first dictionary inside bar - index 0 stores events split by beat then voice - index 1 splits events by voice then beat
                     events_by_bar\
                         .setdefault(first.measureNumber, {})\
+                        .setdefault(0, {})\
                         .setdefault(first.beat, {})\
                         .setdefault(voice, {})\
+                        .setdefault(description_order, [])\
+                        .append(event)
+                    
+                    events_by_bar\
+                        .setdefault(first.measureNumber, {})\
+                        .setdefault(1, {})\
+                        .setdefault(voice, {})\
+                        .setdefault(first.beat, {})\
                         .setdefault(description_order, [])\
                         .append(event)
 
@@ -536,8 +546,17 @@ class Music21TalkingScore(TalkingScoreBase):
                     # todo -  Note - THIS WILL NOT HANDLE CRESCENDOS/DIMINUENDOS THAT SPAN MEASURES
                     events_by_bar\
                         .setdefault(last.measureNumber, {})\
+                        .setdefault(0, {})\
                         .setdefault(last.beat + last.duration.quarterLength - 1, {})\
                         .setdefault(voice, {})\
+                        .setdefault(description_order, [])\
+                        .append(event)
+                    
+                    events_by_bar\
+                        .setdefault(last.measureNumber, {})\
+                        .setdefault(1, {})\
+                        .setdefault(voice, {})\
+                        .setdefault(last.beat + last.duration.quarterLength - 1, {})\
                         .setdefault(description_order, [])\
                         .append(event)
 
@@ -612,10 +631,21 @@ class Music21TalkingScore(TalkingScoreBase):
                 beat = element.beat
             previous_beat = beat
 
+            #there might be a better way of doing this. 
+            #the second setdefault sets whether beat comes before voice.  0=beat, 1=voice.  It makes events have a lot of duplicate data... 
             events\
                 .setdefault(measure.measureNumber, {})\
+                .setdefault(0, {})\
                 .setdefault(beat, {})\
                 .setdefault(voice, {})\
+                .setdefault(description_order, [])\
+                .append(event)
+            
+            events\
+                .setdefault(measure.measureNumber, {})\
+                .setdefault(1, {})\
+                .setdefault(voice, {})\
+                .setdefault(beat, {})\
                 .setdefault(description_order, [])\
                 .append(event)
 
