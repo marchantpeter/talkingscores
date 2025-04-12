@@ -162,24 +162,24 @@
                         {% if not loop.first %}<br/>{% endif %}
                         <h5>Beat {{ beat }}:</h5>
                         {% set previous_event = {'value' : None} %}
-                        {% for voice, events_per_voice in events_per_beat.items() %}
-                            {% if events_per_beat|length>1 or multiple_voices_in_measure['value']==true %} 
+                        {% for voice, events_per_voice in events_per_beat.items() -%}
+                            {% if events_per_beat|length>1 or multiple_voices_in_measure['value']==true -%} 
                                 {% if not loop.first %}<br/>{% endif %}
                                 Voice {{voice}}:
                                 {% set _ = multiple_voices_in_measure.update({'value': true}) %}
-                            {% endif %}
+                            {%- endif %}
                             
-                            {% for pitch_space, events in events_per_voice.items() %}
-                                {% if not loop.first %}, {% endif %}
-                                {#  Loop over the events  #}
-                                {% for event in events %}
-                                    {% if not loop.first %}, {% endif %}
-                                    {{ event.render(previous_event['value'])|join(' ') }}
-                                    {#  Store the event for context next time around  #}
-                                    {% set _ = previous_event.update({'value': event}) %}
-                                {% endfor %} {# End loop over events #}
-                            {% endfor %} {# End loop over pitch indexes #}
-                        {% endfor %}. {# End loop over voices #}
+                            {% for pitch_space, events in events_per_voice.items() -%}
+                                {% if not loop.first -%}, {% endif %}
+                                {#-  Loop over the events  -#}
+                                {% for event in events -%}
+                                    {% if not loop.first -%}, {% endif %}
+                                    {{- event.render(previous_event['value'])|join(' ') -}}
+                                    {#-  Store the event for context next time around  -#}
+                                    {%- set _ = previous_event.update({'value': event}) -%}
+                                {%- endfor %} {#- End loop over events -#}
+                            {%- endfor %} {#- End loop over pitch indexes -#}
+                        {%- endfor %}. {#- End loop over voices -#}
                 
                     {% endfor %} {# End loop over beats #}
                 </div>
@@ -192,20 +192,20 @@
                             <h5>Voice {{ voice }}:</h5>
                         {% endif %}
                         {% set previous_event = {'value' : None} %}
-                        {% for beat, events_per_beat in events_per_voice.items() %}
+                        {% for beat, events_per_beat in events_per_voice.items() -%}
                             {% if not loop.first %}<br/>{% endif %}
                             Beat {{ beat }}:
-                            {% for pitch_space, events in events_per_beat.items() %}
-                                {% if not loop.first %}, {% endif %}
-                                {#  Loop over the events  #}
-                                {% for event in events %}
-                                    {% if not loop.first %}, {% endif %}
-                                    {{ event.render(previous_event['value'])|join(' ') }}
-                                    {#  Store the event for context next time around  #}
-                                    {% set _ = previous_event.update({'value': event}) %}
-                                {% endfor %} {# End loop over events #}
-                            {% endfor %} {# End loop over pitch indexes #}
-                        {% endfor %}. {# End loop over voices #}
+                            {% for pitch_space, events in events_per_beat.items() -%}
+                                {% if not loop.first -%}, {% endif %}
+                                {#-  Loop over the events  -#}
+                                {% for event in events -%}
+                                    {% if not loop.first -%}, {% endif %}
+                                    {{- event.render(previous_event['value'])|join(' ') -}}
+                                    {#-  Store the event for context next time around  -#}
+                                    {%- set _ = previous_event.update({'value': event}) -%}
+                                {%- endfor %} {#- End loop over events -#}
+                            {%- endfor %} {#- End loop over pitch indexes -#}
+                        {%- endfor %}. {#- End loop over beat -#}
                 
                     {% endfor %} {# End loop over voices #} 
                 </div>
