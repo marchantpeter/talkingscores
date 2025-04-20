@@ -1,27 +1,144 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
-<html>
+<!doctype html>
+<html lang="en">
 <head>
     <title>Talking score for {{ basic_information['title'] }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
     <meta name="robots" content="noindex" />
     
+    <!-- bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
     <!-- midi.js package -->
     <script type='text/javascript' src='//www.midijs.net/lib/midi.js'></script> 
-{#   <!-- extras -->#}
+    {#   <!-- extras -->#}
     <style type="text/css">
-        body{font-family: Georgia; font-size: 26pt}
-        
-        h4, h5 {
-            margin-block-end:0.5rem;
+        body {
+            font-family: Georgia; 
+            font-size: 26pt;
+            margin: 8px;
+            display: block;
         }
-
-        h5 {
+        
+        h1 {
+            font-size: 2em;
+            font-weight:bold;
             margin-block-start:0.5rem;
             margin-block-end:0.5rem;
         }
+
+        h2 {
+            font-size: 1.5em;
+            font-weight:bold;
+            margin-block-start:0.5rem;
+            margin-block-end:0.5rem;
+        }
+
+        h3 {
+            font-size:1.17em;
+            font-weight:bold;
+            margin-block-start:1em;
+            margin-block-end:1em;
+        }
+
+        h4, h5 {
+            font-size:1em;
+            font-weight:bold;
+            margin-block-start:0.1rem;
+            margin-block-end:0.1rem;
+        }
+
     </style>
 </head>
-<body>
+<body onkeydown="handleKeyDown(event);">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+
+<h1>Options</h1>
+<p>Press the 'A' key at any time or click the button below to change which elements (such as dynamics or repetition etc) or parts (instruments or voices) of the talking score are dispalyed or adjust playback settings like speed and metronome / click. </p> 
+<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#dlgOptions">
+  Show Options Dialog
+</button>
+<br/>
+
+<!-- Options Dialog -->
+<div class="modal fade modal-dialog-scrollable" id="dlgOptions" data-bs-backdrop="static" tabindex="-1" aria-labelledby="dlgOptionsTitle" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="dlgOptionsTitle">Options Dialog Box</h2>
+      </div>
+      <div class="modal-body">
+        <h3>Playback:</h3>
+        <p>
+            Tempo:<br/>
+            <select class="ddlTempo" id="ddlTempo" name="tempo">
+                <option value="50">50%</option>
+                <option value="100" selected>100%</option>
+                <option value="150">150%</option>
+            </select>
+        </p>
+
+        <p>
+            Click:<br/>
+            <select class="ddlClick" id="ddlClick" name="click">
+                <option value="n">None</option>
+                <option value="be">Bars / Beats</option>
+            </select>
+        </p>
+
+        <h3>Description:</h3>
+        <p>
+            Split bar by:<br/>
+            <select class="ddlSplitBarBy" name="splitBarBy">
+                <option value="b">Beat then voice</option>
+                <option value="v">Voice then beat</option>
+            </select>
+        </p>
+
+        <p>
+            <input type="checkbox" id="chkRepetition" onClick="chkRepetitionClick()" name="describeRepetition" value="repetition" checked>
+            <label for="chkRepetition">Descriibe repetition of bars</label>
+        </p>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" onClick="dlgOptions_OK()">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    var dlgOptionsShown = false;
+    var dlgOptions = new bootstrap.Modal(document.getElementById('dlgOptions'), {
+        keyboard: false
+    })
+
+    dlgOptions.addEventListener('hidden.bs.modal', function (event) {
+        dlgOptionsShown = false
+    })
+      
+    dlgOptions.addEventListener('shown.bs.modal', function (event) {
+        dlgOptionsShown = true
+    })
+
+    function handleKeyDown(event) {
+        if (event.key=="a" || event.key=="A") {
+            if (dlgOptionsShown==true) {
+                dlgOptions.hide()
+            } else {
+                dlgOptions.show();
+            }
+        } else if (event.key=="s" || event.key=="S") {
+            MIDIjs.stop();
+        }
+    }
+
+    function dlgOptions_OK() {
+        dlgOptions.hide();
+    }
+    
+</script>
 
 <h1>Info</h1>
 
@@ -31,20 +148,6 @@
 <p>Music, both hands, a bar at a time, beat by beat</p>
 
 <h2>Entire score:</h2>
-<p>
-    Tempo:
-    <select class="ddlTempo" name="tempo" id="ddlTempo">
-        <option value="50">50%</option>
-        <option value="100" selected>100%</option>
-        <option value="150">150%</option>
-    </select>
-    &nbsp; &nbsp;
-    Click:
-    <select class="ddlClick" name="click" id="ddlClick">
-        <option value="n">None</option>
-        <option value="be">Bars / Beats</option>
-    </select>
-</p>
 {% if play_all %}
     <a href="#" class="lnkPlay" onClick="MIDIjs.play('{{ full_score_midis.midi_all + "&bsi="}}{{binary_selected_instruments}}{{"&bpi="}}{{binary_play_all}}'); return false;">Play All Instruments </a>
     <br/>
@@ -70,7 +173,8 @@
 
 
 <h1>Stop Music Playback</h1>
-<a href="#" onClick="MIDIjs.stop(); return false;">Stop playback</a>
+<p>Press the 'S' key at any time to stop playback - or click this button.  
+<button type="button" class="btn btn-primary" onClick="MIDIjs.stop(); return false;">Stop playback</button>
 
 <h1>Summary:</h1>
 {{general_summary}}
@@ -86,26 +190,6 @@
 {% for segment in music_segments %}
 
     <h2>Bar{% if segment.start_bar != segment.end_bar %}s{% endif %} {{ segment.start_bar }} {% if segment.start_bar != segment.end_bar %} to {{ segment.end_bar }}{% endif %}</h2>
-    <p>
-        Tempo:
-        <select class="ddlTempo" name="tempo">
-            <option value="50">50%</option>
-            <option value="100" selected>100%</option>
-            <option value="150">150%</option>
-        </select>
-        &nbsp; &nbsp;
-        Click:
-        <select class="ddlClick" name="click">
-            <option value="n">None</option>
-            <option value="be">Bars / Beats</option>
-        </select>
-        &nbsp; &nbsp;
-        Split bar by:
-        <select class="ddlSplitBarBy" name="splitBarBy">
-            <option value="b">Beat then voice</option>
-            <option value="v">Voice then beat</option>
-        </select>
-    </p>
     {% if play_all %}
         <a href="#" class="lnkPlay" onClick="MIDIjs.play('{{ segment.midi_all + "&bsi="}}{{binary_selected_instruments}}{{"&bpi="}}{{binary_play_all}}'); return false;">Play All - bar{% if segment.start_bar != segment.end_bar %}s{% endif %} {{ segment.start_bar }} {% if segment.start_bar != segment.end_bar %} to {{ segment.end_bar }}{% endif %} </a>
         <br/>
@@ -142,11 +226,13 @@
             {% endif %}
             {#  Loop over each bar in the segment #}
             {% for bar, events_for_bars in part_description.items() %}
+                {% if not loop.first %}<br/>{% endif %}
                 <h4>Bar {{ bar }}:</h4>
                 {% set multiple_voices_in_measure = {'value' : False} %}
                 {% if bar in repetition_in_contexts[instruments[instrument_index][1] + part_index] %}
-                    Repetition - {{repetition_in_contexts[instruments[instrument_index][1] + part_index][bar]}} 
-                    <br/> <br/>
+                    <p class="repetition">
+                        Repetition - {{repetition_in_contexts[instruments[instrument_index][1] + part_index][bar]}} 
+                    </p>
                 {% endif %}
 
                 {% if bar in time_and_keys %}
@@ -254,10 +340,6 @@
                     href = href.substr(0,posTempo)
                     lnkPlay.setAttribute('onClick', href +"&t="+ tempo + "&c=" + click + "&bsi={{binary_selected_instruments}}&bpi={{binary_play_all}}'); return false;") 
                 })
-                
-                document.querySelectorAll('.ddlTempo').forEach((ddlTempo2) => {
-                    ddlTempo2.value = ddlTempo.value
-                })
             })
         }) 
 
@@ -275,10 +357,6 @@
                     let posTempo = href.indexOf("&t=")
                     href = href.substr(0,posTempo)
                     lnkPlay.setAttribute('onClick', href +"&t="+ tempo + "&c=" + click + "&bsi={{binary_selected_instruments}}&bpi={{binary_play_all}}'); return false;") 
-                })
-                
-                document.querySelectorAll('.ddlClick').forEach((ddlClick2) => {
-                    ddlClick2.value = ddlClick.value
                 })
             })
         }) 
@@ -303,14 +381,25 @@
                         ddl.style.display='block'
                     })
                 }
-                document.querySelectorAll('.ddlSplitBarBy').forEach((ddlSplit2) => {
-                    ddlSplit2.value = ddlSplit.value
-                })
             })
         })
         
     })
 
+    function chkRepetitionClick() {
+        var chkRepetition = document.getElementById("chkRepetition");
+        //the user clicked the box and it changed before it runs this.  
+        if (chkRepetition.checked == true) {
+            document.querySelectorAll('.repetition').forEach((rep) => {
+                rep.style.display = "block";
+            })
+        } else {
+            document.querySelectorAll('.repetition').forEach((rep) => {
+                rep.style.display = "none";
+            })
+        }
+    }
 </script>
+
 </body>
 </html>
