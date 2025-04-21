@@ -82,7 +82,7 @@ class TSDynamic(TSEvent):
         self.short_name = short_name
 
     def render(self, context=None):
-        return [self.long_name]
+        return ["<span class='dynamics' style='display:inline'>" + self.long_name + "</span>"]
 
 
 class TSPitch(TSEvent):

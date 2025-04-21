@@ -54,7 +54,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
 
 <h1>Options</h1>
-<p>Press the 'A' key at any time or click the button below to change which elements (such as dynamics or repetition etc) or parts (instruments or voices) of the talking score are dispalyed or adjust playback settings like speed and metronome / click. </p> 
+<p>Press the 'A' key at any time or click the button below to change the structure (ie beat then voice or voice then beat), which elements are described (such as dynamics or repetition), or adjust playback settings (such as speed and metronome). </p> 
 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#dlgOptions">
   Show Options Dialog
 </button>
@@ -96,8 +96,13 @@
         </p>
 
         <p>
-            <input type="checkbox" id="chkRepetition" onClick="chkRepetitionClick()" name="describeRepetition" value="repetition" checked>
+            <input type="checkbox" id="chkRepetition" onClick="chkRepetitionClick()" name="describeRepetition" checked>
             <label for="chkRepetition">Descriibe repetition of bars</label>
+        </p>
+
+        <p>
+            <input type="checkbox" id="chkDynamics" onClick="chkDynamicsClick()" name="showDynamics" checked>
+            <label for="chkDynamics">Show Dynamics</label>
         </p>
 
       </div>
@@ -147,7 +152,11 @@
 <p>Time signature of {{ preamble['time_signature'] }}, key signature of {{ preamble['key_signature'] }}, tempo of {{ preamble['tempo']|default('no tempo specified') }}</p>
 <p>Music, both hands, a bar at a time, beat by beat</p>
 
-<h2>Entire score:</h2>
+<h1>Stop Music Playback</h1>
+<p>Press the 'S' key at any time to stop playback - or click this button.  </p>
+<button type="button" class="btn btn-danger" onClick="MIDIjs.stop(); return false;">Stop playback</button>
+
+<h2>Play Entire score:</h2>
 {% if play_all %}
     <a href="#" class="lnkPlay" onClick="MIDIjs.play('{{ full_score_midis.midi_all + "&bsi="}}{{binary_selected_instruments}}{{"&bpi="}}{{binary_play_all}}'); return false;">Play All Instruments </a>
     <br/>
@@ -170,11 +179,6 @@
         {% endfor %}
     </li>
 {% endfor %}
-
-
-<h1>Stop Music Playback</h1>
-<p>Press the 'S' key at any time to stop playback - or click this button.  
-<button type="button" class="btn btn-primary" onClick="MIDIjs.stop(); return false;">Stop playback</button>
 
 <h1>Summary:</h1>
 {{general_summary}}
@@ -396,6 +400,21 @@
         } else {
             document.querySelectorAll('.repetition').forEach((rep) => {
                 rep.style.display = "none";
+            })
+        }
+    }
+
+
+    function chkDynamicsClick() {
+        var chkDynamics = document.getElementById("chkDynamics");
+        //the user clicked the box and it changed before it runs this.  
+        if (chkDynamics.checked == true) {
+            document.querySelectorAll('.dynamics').forEach((dyn) => {
+                dyn.style.display = "inline";
+            })
+        } else {
+            document.querySelectorAll('.dynamics').forEach((dyn) => {
+                dyn.style.display = "none";
             })
         }
     }
